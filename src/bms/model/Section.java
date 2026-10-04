@@ -84,10 +84,14 @@ public class Section {
 				break;
 			// 小節の拡大率
 			case SECTION_RATE:
-				int colon_index = line.indexOf(":");
-				try {
-					rate = Double.valueOf(line.substring(colon_index + 1, line.length()));					
-				} catch (NumberFormatException e) {
+				final int sindex = getDataStartIndex(line);
+				if (sindex != -1) {
+					try {
+						rate = Double.valueOf(line.substring(sindex).trim());					
+					} catch (NumberFormatException e) {
+						log.add(new DecodeLog(WARNING, "小節の拡大率が不正です : " + line));
+					}
+				} else {
 					log.add(new DecodeLog(WARNING, "小節の拡大率が不正です : " + line));
 				}
 				break;
@@ -185,10 +189,52 @@ public class Section {
 		}
 	}
 	
+	/**
+	 * 小節データ行のデータ開始インデックスを取得する。
+	 * 通常のコロン区切り (#xxxyy:data) およびスペース区切り (#xxxyy data) に対応。
+	 * 
+	 * @param line 小節データ行
+	 * @return データ部の開始インデックス。区切り文字が存在しない場合は -1
+	 */
+	private static int getDataStartIndex(String line) {
+		int findex = 6;
+		final int len = line.length();
+		boolean foundSeparator = false;
+		while (findex < len) {
+			final char c = line.charAt(findex);
+			if (c == ':' || Character.isWhitespace(c)) {
+				foundSeparator = true;
+				findex++;
+			} else {
+				break;
+			}
+		}
+		return foundSeparator ? findex : -1;
+	}
+
+	/**
+	 * 小節データ行のデータ終了インデックスを取得する（末尾の空白文字を除去）。
+	 * 
+	 * @param line 小節データ行
+	 * @param findex データ部の開始インデックス
+	 * @return データ部の終了インデックス
+	 */
+	private static int getDataEndIndex(String line, int findex) {
+		int lindex = line.length();
+		while (lindex > findex && Character.isWhitespace(line.charAt(lindex - 1))) {
+			lindex--;
+		}
+		return lindex;
+	}
+
 	private int[] splitData(String line) {
 		final int base = model.getBase();
-		final int findex = line.indexOf(":") + 1;
-		final int lindex = line.length();
+		final int findex = getDataStartIndex(line);
+		if (findex == -1) {
+			log.add(new DecodeLog(WARNING, model.getTitle() + ":チャンネル定義の区切り文字が不正です:" + line));
+			return new int[0];
+		}
+		final int lindex = getDataEndIndex(line, findex);
 		final int split = (lindex - findex) / 2;
 		int[] result = new int[split];
 		for (int i = 0; i < split; i++) {
@@ -207,8 +253,12 @@ public class Section {
 	
 	private void processData(String line, DataProcessor processor) {
 		final int base = model.getBase();
-		final int findex = line.indexOf(":") + 1;
-		final int lindex = line.length();
+		final int findex = getDataStartIndex(line);
+		if (findex == -1) {
+			log.add(new DecodeLog(WARNING, model.getTitle() + ":チャンネル定義の区切り文字が不正です:" + line));
+			return;
+		}
+		final int lindex = getDataEndIndex(line, findex);
 		final int split = (lindex - findex) / 2;
 		int result;
 		for (int i = 0; i < split; i++) {
