@@ -335,6 +335,14 @@ public class BMSDecoder extends ChartDecoder {
 			LongNote[] lnendstatus = new LongNote[model.getMode().key];
 			final TimeLine basetl = new TimeLine(0, 0, model.getMode().key);
 			basetl.setBPM(model.getBpm());
+			if (bm[0] != -2) {
+				// #BMP00が定義されている場合、デフォルトのミスレイヤーとして設定する
+				final Layer.Sequence[] poors = new Layer.Sequence[] {
+						new Layer.Sequence(0, bm[0]),
+						new Layer.Sequence(500)
+				};
+				basetl.setEventlayer(new Layer[] {new Layer(new Layer.Event(Layer.EventType.MISS, 1), new Layer.Sequence[][] {poors})});
+			}
 			timelines.put(0.0, new TimeLineCache(0.0, basetl));
 			for (Section section : sections) {
 				section.makeTimeLines(wm, bm, timelines, lnlist, lnendstatus);
