@@ -53,7 +53,15 @@ public class BMSDecoder extends ChartDecoder {
 	public BMSModel decode(ChartInformation info) {
 		try {
 			this.lntype = info.lntype;
-			return decode(info.path, Files.readAllBytes(info.path), info.path.toString().toLowerCase().endsWith(".pms"), info.selectedRandoms);
+			ChartSource source = info.source != null ? info.source : (info.path != null ? new PathChartSource(info.path) : null);
+			if (source == null) {
+				return null;
+			}
+			byte[] data;
+			try (InputStream is = source.openStream()) {
+				data = is.readAllBytes();
+			}
+			return decode(source, data, source.location().toLowerCase().endsWith(".pms"), info.selectedRandoms);
 		} catch (IOException e) {
 			log.add(new DecodeLog(ERROR, "BMSファイルが見つかりません"));
 			Logger.getGlobal().severe("BMSファイル解析中の例外 : " + e.getClass().getName() + " - " + e.getMessage());
@@ -81,7 +89,7 @@ public class BMSDecoder extends ChartDecoder {
 	 * @return
 	 */
 	public BMSModel decode(byte[] data, boolean ispms, int[] random) {
-		return this.decode(null, data, ispms, random);
+		return this.decode((ChartSource) null, data, ispms, random);
 	}
 	
 	/**
@@ -91,6 +99,11 @@ public class BMSDecoder extends ChartDecoder {
 	 * @return
 	 */
 	private BMSModel decode(Path path, byte[] data, boolean ispms, int[] selectedRandom) {
+		return decode(path != null ? new PathChartSource(path) : null, data, ispms, selectedRandom);
+	}
+
+	private BMSModel decode(ChartSource source, byte[] data, boolean ispms, int[] selectedRandom) {
+		final String path = source != null ? source.location() : null;
 		log.clear();
 		final long time = System.currentTimeMillis();
 		BMSModel model = new BMSModel();
@@ -402,7 +415,7 @@ public class BMSDecoder extends ChartDecoder {
 				}
 			}
 			
-			model.setChartInformation(new ChartInformation(path, lntype, selectedRandom));
+			model.setChartInformation(new ChartInformation(source, lntype, selectedRandom));
 			printLog(path);
 			return model;
 		} catch (IOException e) {

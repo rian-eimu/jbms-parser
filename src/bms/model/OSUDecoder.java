@@ -20,10 +20,17 @@ public class OSUDecoder extends ChartDecoder {
 
 	public BMSModel decode(ChartInformation info) {
 		this.lntype = info.lntype;
-		return decode(info.path);
+		return decode(info, info.source != null ? info.source : (info.path != null ? new PathChartSource(info.path) : null));
 	}
 
 	public BMSModel decode(Path f) {
+		return decode(new ChartInformation(f, lntype, null));
+	}
+
+	private BMSModel decode(ChartInformation info, ChartSource source) {
+		if (source == null) {
+			return null;
+		}
 		MessageDigest md5digest, sha256digest;
 		try {
 			md5digest = MessageDigest.getInstance("MD5");
@@ -34,8 +41,12 @@ public class OSUDecoder extends ChartDecoder {
 		}
 		BufferedReader br;
 		try {
+			byte[] bytes;
+			try (InputStream is = source.openStream()) {
+				bytes = is.readAllBytes();
+			}
 			br = new BufferedReader(new InputStreamReader(
-					new DigestInputStream(new DigestInputStream(new ByteArrayInputStream(Files.readAllBytes(f)), md5digest), sha256digest),
+					new DigestInputStream(new DigestInputStream(new ByteArrayInputStream(bytes), md5digest), sha256digest),
 					"MS932"));
 
 		} catch (IOException e) {
@@ -304,7 +315,7 @@ public class OSUDecoder extends ChartDecoder {
 		model.setWavList(wavmap.toArray(new String[wavmap.size()]));
 		model.setAllTimeLine(timelines.values().stream().collect(Collectors.toList()).toArray(new TimeLine[timelines.size()]));
 		model.setBgaList(bgaList.toArray(new String[bgaList.size()]));
-		model.setChartInformation(new ChartInformation(f, lntype, null));
+		model.setChartInformation(new ChartInformation(source, lntype, null));
 		return model;
 	}
 
