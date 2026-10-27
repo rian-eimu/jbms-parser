@@ -75,6 +75,7 @@ public class BMSDecoder extends ChartDecoder {
 	private final Map<Integer, Double> scrolltable = new TreeMap<Integer, Double>();
 	private final Map<Integer, Double> stoptable = new TreeMap<Integer, Double>();
 	private final Map<Integer, Double> bpmtable = new TreeMap<Integer, Double>();
+	private final Map<Integer, Double> speedtable = new TreeMap<Integer, Double>();
 	private final Deque<Integer> randoms = new ArrayDeque<Integer>();
 	private final Deque<Integer> srandoms = new ArrayDeque<Integer>();
 	private final Deque<Integer> crandom = new ArrayDeque<Integer>();
@@ -108,6 +109,7 @@ public class BMSDecoder extends ChartDecoder {
 		final long time = System.currentTimeMillis();
 		BMSModel model = new BMSModel();
 		scrolltable.clear();
+		speedtable.clear();
 		stoptable.clear();
 		bpmtable.clear();
 
@@ -306,6 +308,21 @@ public class BMSDecoder extends ChartDecoder {
 							} else {
 								log.add(new DecodeLog(WARNING, "#SCROLLxxは不十分な定義です : " + line));
 							}
+						} else if (matchesReserveWord(line, "SPEED")) {
+							if (line.length() >= 10) {
+								try {
+									double speed = Double.parseDouble(line.substring(9).trim());
+									if(base == 62) {
+										speedtable.put(ChartDecoder.parseInt62(line, 6), speed);
+									} else {
+										speedtable.put(ChartDecoder.parseInt36(line, 6), speed);
+									}
+								} catch (NumberFormatException e) {
+									log.add(new DecodeLog(WARNING, "#SPEEDxxに数字が定義されていません : " + line));
+								}
+							} else {
+								log.add(new DecodeLog(WARNING, "#SPEEDxxは不十分な定義です : " + line));
+							}
 						} else {
 							for (CommandWord cw : commandWords) {
 								if (line.length() > cw.name().length() + 2 && matchesReserveWord(line, cw.name())) {
@@ -339,7 +356,7 @@ public class BMSDecoder extends ChartDecoder {
 			Section[] sections = new Section[maxsec + 1];
 			for (int i = 0; i <= maxsec; i++) {
 				sections[i] = new Section(model, prev, lines[i] != null ? lines[i] : Collections.EMPTY_LIST, bpmtable,
-						stoptable, scrolltable, log);
+						stoptable, scrolltable, speedtable, log);
 				prev = sections[i];
 			}
 
