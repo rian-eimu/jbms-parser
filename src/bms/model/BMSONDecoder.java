@@ -38,10 +38,18 @@ public class BMSONDecoder extends ChartDecoder {
 
 	public BMSModel decode(ChartInformation info) {
 		this.lntype = info.lntype;
-		return decode(info.path);
+		return decode(info, info.source != null ? info.source : (info.path != null ? new PathChartSource(info.path) : null));
 	}
 
 	public BMSModel decode(Path f) {
+		return decode(new ChartInformation(f, lntype, null));
+	}
+
+	private BMSModel decode(ChartInformation info, ChartSource source) {
+		if (source == null) {
+			return null;
+		}
+		final String f = source.location();
 		Logger.getGlobal().fine("BMSONファイル解析開始 :" + f.toString());
 		log.clear();
 		tlcache.clear();
@@ -51,8 +59,10 @@ public class BMSONDecoder extends ChartDecoder {
 		Bmson bmson = null;
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
-			bmson = mapper.readValue(new DigestInputStream(new BufferedInputStream(Files.newInputStream(f)), digest),
-					Bmson.class);
+			try (InputStream is = source.openStream()) {
+				bmson = mapper.readValue(new DigestInputStream(new BufferedInputStream(is), digest), Bmson.class);
+			}
+
 			model.setSHA256(BMSDecoder.convertHexString(digest.digest()));
 		} catch (NoSuchAlgorithmException | IOException e) {
 			e.printStackTrace();
@@ -443,7 +453,7 @@ public class BMSONDecoder extends ChartDecoder {
 		Logger.getGlobal().fine("BMSONファイル解析完了 :" + f.toString() + " - TimeLine数:" + tlcache.size() + " 時間(ms):"
 				+ (System.currentTimeMillis() - currnttime));
 		
-		model.setChartInformation(new ChartInformation(f, lntype, null));
+		model.setChartInformation(new ChartInformation(source, lntype, null));
 		printLog(f);
 		return model;
 	}

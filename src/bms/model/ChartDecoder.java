@@ -58,7 +58,15 @@ public abstract class ChartDecoder {
 	 * @return 対応するChartDecoder。存在しない場合はnull
 	 */
 	public static ChartDecoder getDecoder(Path p) {
-		final String s = p.getFileName().toString().toLowerCase();
+		return getDecoder(p.getFileName().toString());
+	}
+
+	public static ChartDecoder getDecoder(ChartSource source) {
+		return source != null && source.location() != null ? getDecoder(source.location()) : null;
+	}
+
+	public static ChartDecoder getDecoder(String name) {
+		final String s = name.toLowerCase();
 		if (s.endsWith(".bms") || s.endsWith(".bme") || s.endsWith(".bml") || s.endsWith(".pms")) {
 			return new BMSDecoder(BMSModel.LNTYPE_LONGNOTE);
 		} else if (s.endsWith(".bmson")) {
@@ -156,6 +164,10 @@ public abstract class ChartDecoder {
 	}
 	
 	protected void printLog(Path path) {
+		printLog(path != null ? path.toString() : null);
+	}
+
+	protected void printLog(String path) {
 		log.forEach(log -> {
 			switch(log.getState()) {
 			case INFO:

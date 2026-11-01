@@ -395,7 +395,13 @@ public class BMSModel implements Comparable<BMSModel> {
 	}
 	
 	public String getPath() {
-		return info != null && info.path != null ? info.path.toString() : null;
+		if(info == null) {
+			return null;
+		}
+		if(info.source != null) {
+			return info.source.location();
+		}
+		return info.path != null ? info.path.toString() : null;
 	}
 	
 	public int getLntype() {
@@ -523,6 +529,7 @@ public class BMSModel implements Comparable<BMSModel> {
 			sb.append("LNMODE:" + lnmode + "\n");			
 		}
 		double nowbpm = -Double.MIN_VALUE;
+		double nowspeed = 1.0;
 		StringBuilder tlsb = new StringBuilder();
 		for(TimeLine tl : timelines) {
 			tlsb.setLength(0);
@@ -535,6 +542,11 @@ public class BMSModel implements Comparable<BMSModel> {
 			}
 			if(tl.getStop() != 0) {
 				tlsb.append("S(" + tl.getStop() + ")");
+				write = true;
+			}
+			if(tl.hasSpeedObj()) {
+				nowspeed = tl.getSpeed();
+				tlsb.append("SP(" + nowspeed + ")");
 				write = true;
 			}
 			if(tl.getSectionLine()) {
@@ -608,6 +620,5 @@ public class BMSModel implements Comparable<BMSModel> {
 		} else {
 			this.base = 36;
 		}
-		return;
 	}
 }
