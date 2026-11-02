@@ -602,14 +602,16 @@ enum CommandWord {
 	LNMODE ((model, arg) -> {
 		try {
 			int lnmode = Integer.parseInt(arg);
-			if(lnmode < 0 || lnmode > 3) {
+			if(lnmode < 0 || lnmode > 4) {
 				return new DecodeLog(WARNING, "#LNMODEに無効な数字が定義されています");
 			}
 
 			// LR2oraja Endless Dream: LR2 does not support LNMODE, suppress modes 1 or 2
 			// lnmode = 0;
 
-			model.setLnmode(lnmode);
+			if (lnmode >= 1) {
+				model.setLnmode(lnmode);
+			}
 		} catch (NumberFormatException e) {
 			return new DecodeLog(WARNING, "#LNMODEに数字が定義されていません");
 		}

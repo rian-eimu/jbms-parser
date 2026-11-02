@@ -114,6 +114,7 @@ public class BMSModel implements Comparable<BMSModel> {
 	public static final int LNTYPE_LONGNOTE = 0;
 	public static final int LNTYPE_CHARGENOTE = 1;
 	public static final int LNTYPE_HELLCHARGENOTE = 2;
+	public static final int LNTYPE_HELLLONGNOTE = 3;
 
 	/**
 	 * 時間とTimeLineのマッピング
@@ -563,7 +564,7 @@ public class BMSModel implements Comparable<BMSModel> {
 				} else if(n instanceof LongNote) {
 					LongNote ln = (LongNote)n;
 					if(!ln.isEnd()) {
-						final char[] lnchars = {'l','L','C','H'};
+						final char[] lnchars = {'l','L','C','H','h'};
 						tlsb.append(lnchars[ln.getType()] + ln.getMilliDuration());
 						write = true;
 					}

@@ -110,7 +110,7 @@ public class BMSONDecoder extends ChartDecoder {
 			log.add(new DecodeLog(WARNING, "非対応のmode_hintです。mode_hint = " + bmson.info.mode_hint));
 			model.setMode(Mode.BEAT_7K);
 		}
-		if (bmson.info.ln_type > 0 && bmson.info.ln_type <= 3) {
+		if (bmson.info.ln_type > 0 && bmson.info.ln_type <= 4) {
 			model.setLnmode(bmson.info.ln_type);
 		}
 		final int[] keyassign;
@@ -298,7 +298,7 @@ public class BMSONDecoder extends ChartDecoder {
 									}
 
 									end.setNote(key, lnend);
-									ln.setType(n.t > 0 && n.t <= 3 ? n.t : model.getLnmode());
+									ln.setType(n.t > 0 && n.t <= 4 ? n.t : model.getLnmode());
 									ln.setPair(lnend);
 									if (lnlist[key] == null) {
 										lnlist[key] = new ArrayList<LongNote>();

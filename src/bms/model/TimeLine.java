@@ -143,7 +143,7 @@ public class TimeLine {
 				if (note instanceof LongNote) {
 					final LongNote ln = (LongNote) note;
 					if (ln.getType() == LongNote.TYPE_CHARGENOTE || ln.getType() == LongNote.TYPE_HELLCHARGENOTE
-							|| (ln.getType() == LongNote.TYPE_UNDEFINED && lntype != BMSModel.LNTYPE_LONGNOTE)
+							|| (ln.getType() == LongNote.TYPE_UNDEFINED && lntype != BMSModel.LNTYPE_LONGNOTE && lntype != BMSModel.LNTYPE_HELLLONGNOTE)
 							|| !ln.isEnd()) {
 						count++;
 					}

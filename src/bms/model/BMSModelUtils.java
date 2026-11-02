@@ -101,7 +101,7 @@ public class BMSModelUtils {
 							LongNote ln = (LongNote) tl.getNote(lane);
 							if (ln.getType() == LongNote.TYPE_CHARGENOTE
 									|| ln.getType() == LongNote.TYPE_HELLCHARGENOTE
-									|| (ln.getType() == LongNote.TYPE_UNDEFINED && model.getLntype() != BMSModel.LNTYPE_LONGNOTE)
+									|| (ln.getType() == LongNote.TYPE_UNDEFINED && model.getLntype() != BMSModel.LNTYPE_LONGNOTE && model.getLntype() != BMSModel.LNTYPE_HELLLONGNOTE)
 									|| !ln.isEnd()) {
 								count++;
 							}
@@ -122,7 +122,7 @@ public class BMSModelUtils {
 							final LongNote ln = (LongNote) n;
 							if (ln.getType() == LongNote.TYPE_CHARGENOTE
 									|| ln.getType() == LongNote.TYPE_HELLCHARGENOTE
-									|| (ln.getType() == LongNote.TYPE_UNDEFINED && model.getLntype() != BMSModel.LNTYPE_LONGNOTE)
+									|| (ln.getType() == LongNote.TYPE_UNDEFINED && model.getLntype() != BMSModel.LNTYPE_LONGNOTE && model.getLntype() != BMSModel.LNTYPE_HELLLONGNOTE)
 									|| !ln.isEnd()) {
 								count++;
 							}
