@@ -173,6 +173,30 @@ public class BMSModelUtils {
 		return maxnotes;
 	}
 	
+	public static void applyStartNoteTimeMargin(BMSModel model, long marginTime) {
+		if (marginTime > 0 && model.getAllTimeLines().length > 0) {
+			double marginSection = marginTime * model.getAllTimeLines()[0].getBPM() / 240000;
+			for (TimeLine tl : model.getAllTimeLines()) {
+				tl.setSection(tl.getSection() + marginSection);
+				tl.setMicroTime(tl.getMicroTime() + marginTime * 1000);
+			}
+
+			TimeLine[] tl2 = new TimeLine[model.getAllTimeLines().length + 1];
+			TimeLine first = model.getAllTimeLines()[0];
+			tl2[0] = new TimeLine(0, 0, model.getMode().key);
+			tl2[0].setBPM(model.getBpm());
+			if (first.hasSpeedObj()) {
+				tl2[0].setSpeedObj(first.getSpeed());
+			} else {
+				tl2[0].setSpeed(first.getSpeed());
+			}
+			for (int i = 1; i < tl2.length; i++) {
+				tl2[i] = model.getAllTimeLines()[i - 1];
+			}
+			model.setAllTimeLine(tl2);
+		}
+	}
+
 	public static long setStartNoteTime(BMSModel model, long starttime) {
 		long marginTime = 0;
 		for (TimeLine tl : model.getAllTimeLines()) {

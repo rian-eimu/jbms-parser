@@ -638,6 +638,75 @@ public class BMSModel implements Comparable<BMSModel> {
 		BMS, BMSON;
 	}
 
+	/**
+	 * 動的条件分岐ブロック定義
+	 */
+	private ConditionalBlock[] conditionalBlocks = new ConditionalBlock[0];
+
+	/**
+	 * 各動的条件分岐ブロックの評価位置に対応するTimeLine
+	 */
+	private TimeLine[] conditionalEvalTimeLines = new TimeLine[0];
+
+	/**
+	 * 動的条件分岐のTimeLine再構築ビルダー
+	 */
+	private ConditionalBlock.ChartBuilder conditionalChartBuilder;
+
+	/**
+	 * 動的条件分岐の全枝で参照されるWAV ID一覧
+	 */
+	private int[] conditionalWavIds = new int[0];
+
+	/**
+	 * 動的条件分岐の枝内に地雷ノーツが含まれるかどうか
+	 */
+	private boolean conditionalContainsMineNote;
+
+	public boolean hasConditional() {
+		return conditionalBlocks != null && conditionalBlocks.length > 0;
+	}
+
+	public ConditionalBlock[] getConditionalBlocks() {
+		return conditionalBlocks;
+	}
+
+	public void setConditionalBlocks(ConditionalBlock[] conditionalBlocks) {
+		this.conditionalBlocks = conditionalBlocks != null ? conditionalBlocks : new ConditionalBlock[0];
+	}
+
+	public TimeLine[] getConditionalEvalTimeLines() {
+		return conditionalEvalTimeLines;
+	}
+
+	public void setConditionalEvalTimeLines(TimeLine[] conditionalEvalTimeLines) {
+		this.conditionalEvalTimeLines = conditionalEvalTimeLines != null ? conditionalEvalTimeLines : new TimeLine[0];
+	}
+
+	public ConditionalBlock.ChartBuilder getConditionalChartBuilder() {
+		return conditionalChartBuilder;
+	}
+
+	public void setConditionalChartBuilder(ConditionalBlock.ChartBuilder conditionalChartBuilder) {
+		this.conditionalChartBuilder = conditionalChartBuilder;
+	}
+
+	public int[] getConditionalWavIds() {
+		return conditionalWavIds;
+	}
+
+	public void setConditionalWavIds(int[] conditionalWavIds) {
+		this.conditionalWavIds = conditionalWavIds != null ? conditionalWavIds : new int[0];
+	}
+
+	public boolean isConditionalContainsMineNote() {
+		return conditionalContainsMineNote;
+	}
+
+	public void setConditionalContainsMineNote(boolean conditionalContainsMineNote) {
+		this.conditionalContainsMineNote = conditionalContainsMineNote;
+	}
+
 	public int getBase() {
 		return base;
 	}

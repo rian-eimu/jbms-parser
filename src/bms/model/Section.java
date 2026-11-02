@@ -979,6 +979,18 @@ public class Section {
 		lnend.addLayeredNote(new NormalNote(wav));
 	}
 
+	public double getSectionnum() {
+		return sectionnum;
+	}
+
+	public double getRate() {
+		return rate;
+	}
+
+	public TimeLine getOrCreateTimeLine(double section) {
+		return getTimeLine(section);
+	}
+
 	private TimeLine getTimeLine(double section) {
 		final TimeLineCache tlc = tlcache.get(section);
 		if (tlc != null) {

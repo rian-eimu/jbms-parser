@@ -54,6 +54,26 @@ public class Lane {
 		hiddenseekpos = hiddenbasepos;
 	}
 
+	public void update(BMSModel model, int lane, int time) {
+		Collection<Note> note = new ArrayDeque<Note>();
+		Collection<Note> hnote = new ArrayDeque<Note>();
+		for (TimeLine tl : model.getAllTimeLines()) {
+			if (tl.existNote(lane)) {
+				note.add(tl.getNote(lane));
+			}
+			if (tl.getHiddenNote(lane) != null) {
+				hnote.add(tl.getHiddenNote(lane));
+			}
+		}
+		notes = note.toArray(new Note[note.size()]);
+		hiddens = hnote.toArray(new Note[hnote.size()]);
+		notebasepos = 0;
+		noteseekpos = 0;
+		hiddenbasepos = 0;
+		hiddenseekpos = 0;
+		mark(time);
+	}
+
 	public void mark(int time) {
 		for (; notebasepos < notes.length - 1 && notes[notebasepos + 1].getTime() < time; notebasepos++)
 			;
