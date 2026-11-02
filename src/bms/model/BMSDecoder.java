@@ -325,8 +325,11 @@ public class BMSDecoder extends ChartDecoder {
 							}
 						} else {
 							for (CommandWord cw : commandWords) {
-								if (line.length() > cw.name().length() + 2 && matchesReserveWord(line, cw.name())) {
-									DecodeLog log = cw.function.apply(model, line.substring(cw.name().length() + 2).trim());
+								if (matchesReserveWord(line, cw.name()) && (line.length() > cw.name().length() + 2
+										|| ((cw == CommandWord.LNOBJ || cw == CommandWord.CNOBJ || cw == CommandWord.HCNOBJ || cw == CommandWord.HLNOBJ)
+												&& (line.length() == cw.name().length() + 1 || Character.isWhitespace(line.charAt(cw.name().length() + 1)))))) {
+									final String rawArg = line.length() > cw.name().length() + 2 ? line.substring(cw.name().length() + 2).trim() : "";
+									DecodeLog log = cw.function.apply(model, rawArg);
 									if (log != null) {
 										this.log.add(log);
 										Logger.getGlobal().warning(model.getTitle() + " - " + log.getMessage() + " : " + line);
@@ -590,12 +593,61 @@ enum CommandWord {
 	LNOBJ ((model, arg) -> {
 		try {
 			if (model.getBase() == 62) {
-				model.setLnobj(ChartDecoder.parseInt62(arg, 0));
+				int id = parseObjId(model, arg);
+				if (id >= 1) {
+					model.setLnobj(id);
+				} else {
+					return new DecodeLog(WARNING, "#LNOBJに無効なIDが定義されています");
+				}
 			} else {
-				model.setLnobj(Integer.parseInt(arg.toUpperCase(), 36));
+				int id = parseObjId(model, arg);
+				if (id >= 1) {
+					model.setLnobj(id);
+				} else {
+					return new DecodeLog(WARNING, "#LNOBJに無効なIDが定義されています");
+				}
 			}
 		} catch (NumberFormatException e) {
 			return new DecodeLog(WARNING, "#LNOBJに数字が定義されていません");
+		}
+		return null;
+	}),
+	CNOBJ ((model, arg) -> {
+		try {
+			int id = parseObjId(model, arg);
+			if (id >= 1) {
+				model.setCnobj(id);
+			} else {
+				return new DecodeLog(WARNING, "#CNOBJに無効なIDが定義されています");
+			}
+		} catch (NumberFormatException | IndexOutOfBoundsException e) {
+			return new DecodeLog(WARNING, "#CNOBJに数字が定義されていません");
+		}
+		return null;
+	}),
+	HCNOBJ ((model, arg) -> {
+		try {
+			int id = parseObjId(model, arg);
+			if (id >= 1) {
+				model.setHcnobj(id);
+			} else {
+				return new DecodeLog(WARNING, "#HCNOBJに無効なIDが定義されています");
+			}
+		} catch (NumberFormatException | IndexOutOfBoundsException e) {
+			return new DecodeLog(WARNING, "#HCNOBJに数字が定義されていません");
+		}
+		return null;
+	}),
+	HLNOBJ ((model, arg) -> {
+		try {
+			int id = parseObjId(model, arg);
+			if (id >= 1) {
+				model.setHlnobj(id);
+			} else {
+				return new DecodeLog(WARNING, "#HLNOBJに無効なIDが定義されています");
+			}
+		} catch (NumberFormatException | IndexOutOfBoundsException e) {
+			return new DecodeLog(WARNING, "#HLNOBJに数字が定義されていません");
 		}
 		return null;
 	}),
@@ -648,6 +700,30 @@ enum CommandWord {
 
 	public final BiFunction<BMSModel, String, DecodeLog> function;
 
+	private static int parseObjId(BMSModel model, String arg) {
+		final String trimmed = arg.trim();
+		if (trimmed.isEmpty()) {
+			throw new NumberFormatException();
+		}
+		int spaceIdx = 0;
+		while (spaceIdx < trimmed.length() && !Character.isWhitespace(trimmed.charAt(spaceIdx))) {
+			spaceIdx++;
+		}
+		arg = trimmed.substring(0, spaceIdx);
+		if (arg.isEmpty() || arg.length() > 2) {
+			throw new NumberFormatException();
+		}
+		if (model.getBase() == 62) {
+			if (arg.length() != 2) {
+				throw new NumberFormatException();
+			}
+			return ChartDecoder.parseInt62(arg, 0);
+		} else {
+			int id = Integer.parseInt(arg.toUpperCase(), 36);
+			return (id >= 1 && id < 36 * 36) ? id : -1;
+		}
+	}
+
 	private CommandWord(BiFunction<BMSModel, String, DecodeLog> function) {
 		this.function = function;
 	}	
@@ -666,6 +742,30 @@ enum OptionWord {
 	});
 
 	public final BiFunction<BMSModel, String, DecodeLog> function;
+
+	private static int parseObjId(BMSModel model, String arg) {
+		final String trimmed = arg.trim();
+		if (trimmed.isEmpty()) {
+			throw new NumberFormatException();
+		}
+		int spaceIdx = 0;
+		while (spaceIdx < trimmed.length() && !Character.isWhitespace(trimmed.charAt(spaceIdx))) {
+			spaceIdx++;
+		}
+		arg = trimmed.substring(0, spaceIdx);
+		if (arg.isEmpty() || arg.length() > 2) {
+			throw new NumberFormatException();
+		}
+		if (model.getBase() == 62) {
+			if (arg.length() != 2) {
+				throw new NumberFormatException();
+			}
+			return ChartDecoder.parseInt62(arg, 0);
+		} else {
+			int id = Integer.parseInt(arg.toUpperCase(), 36);
+			return (id >= 1 && id < 36 * 36) ? id : -1;
+		}
+	}
 
 	private OptionWord(BiFunction<BMSModel, String, DecodeLog> function) {
 		this.function = function;

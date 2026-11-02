@@ -279,13 +279,29 @@ public class Section {
 				result = ChartDecoder.parseInt36(line.charAt(findex + i * 2), line.charAt(findex + i * 2 + 1));
 			}
 			if(result > 0) {
-				processor.process((double)i / split, result);
+				final int g = gcd(i, split);
+				processor.process((double)(i / g) / (split / g), result);
 			} else if(result == -1){
 				log.add(new DecodeLog(WARNING, model.getTitle() + ":チャンネル定義中の不正な値:" + line));				
 			}
 		}
 	}
 	
+	private static int gcd(int a, int b) {
+		while (b != 0) {
+			int t = a % b;
+			a = b;
+			b = t;
+		}
+		return a == 0 ? 1 : a;
+	}
+
+	private static class LanePosEvents {
+		final List<Integer> longNotes = new ArrayList<Integer>(2);
+		final List<Integer> keyNotes = new ArrayList<Integer>(2);
+		final List<Integer> mineNotes = new ArrayList<Integer>(1);
+	}
+
 	interface DataProcessor {
 		public void process(double pos, int data);
 	}
@@ -306,6 +322,9 @@ public class Section {
 	 */
 	public void makeTimeLines(int[] wavmap, int[] bgamap, TreeMap<Double, TimeLineCache> tlcache, List<LongNote>[] lnlist, LongNote[] startln) {
 		final int lnobj = model.getLnobj();
+		final int cnobj = model.getCnobj();
+		final int hcnobj = model.getHcnobj();
+		final int hlnobj = model.getHlnobj();
 		final int lnmode = model.getLnmode();
 		this.tlcache = tlcache;
 		final int[] cassign = model.getMode() == Mode.POPN_9K ? CHANNELASSIGN_POPN : 
@@ -360,6 +379,12 @@ public class Section {
 			}
 		}
 		
+		processChannelLines(cassign, wavmap, bgamap, lnlist, startln, lnobj, cnobj, hcnobj, hlnobj, lnmode, base);
+		if (cassign != null) {
+			return;
+		}
+		final int numKeys = model.getMode().key;
+		final TreeMap<Double, LanePosEvents[]> posEvents = new TreeMap<Double, LanePosEvents[]>();
 		for(String line : channellines) {
 			int channel = ChartDecoder.parseInt36(line.charAt(4), line.charAt(5));
 			int tmpkey = 0;
@@ -394,6 +419,8 @@ public class Section {
 			}
 			switch (channel) {
 			case P1_KEY_BASE:
+				this.processData(line, (pos, data) -> recordKeyNote(posEvents, numKeys, key, pos, data));
+				if (posEvents != null) break;
 				this.processData(line, (pos, data) -> {
 					// normal note, lnobj
 					final TimeLine tl = getTimeLine(sectionnum + rate * pos);
@@ -401,6 +428,7 @@ public class Section {
 						log.add(new DecodeLog(WARNING, "通常ノート追加時に衝突が発生しました : " + (key + 1) + ":"
 								+ tl.getTime()));
 					}
+					final int objType = lnmode;
 					if (data == lnobj) {
 						// LN終端処理
 						// TODO 高速化のために直前のノートを記録しておく
@@ -414,10 +442,14 @@ public class Section {
 								if (note instanceof NormalNote) {
 									// LNOBJの直前のノートをLNに差し替える
 									LongNote ln = new LongNote(note.getWav());
-									ln.setType(lnmode);
+									ln.setType(objType);
+									for (Note layered : note.getLayeredNotes()) {
+										ln.addLayeredNote(layered);
+									}
 									tl2.setNote(key, ln);
 									LongNote lnend = new LongNote(-2);
 									tl.setNote(key, lnend);
+
 									ln.setPair(lnend);
 									
 									if (lnlist[key] == null) {
@@ -431,6 +463,8 @@ public class Section {
 													+ tl2.getSection()  + " - " + tl.getSection()));
 									LongNote lnend = new LongNote(-2);
 									tl.setNote(key, lnend);
+
+									((LongNote) note).setType(objType);
 									((LongNote) note).setPair(lnend);
 									
 									if (lnlist[key] == null) {
@@ -457,6 +491,8 @@ public class Section {
 				});
 				break;				
 			case P1_LONG_KEY_BASE:
+				this.processData(line, (pos, data) -> recordLongNote(posEvents, numKeys, key, pos, data));
+				if (posEvents != null) break;
 				this.processData(line, (pos, data) -> {
 					// long note
 					final TimeLine tl = getTimeLine(sectionnum + rate * pos);
@@ -538,6 +574,8 @@ public class Section {
 				});
 				break;				
 			case P1_MINE_KEY_BASE:
+				this.processData(line, (pos, data) -> recordMineNote(posEvents, numKeys, key, pos, data));
+				if (posEvents != null) break;
 				// mine note
 				this.processData(line, (pos, data) -> {
 					final TimeLine tl = getTimeLine(sectionnum + rate * pos);
@@ -584,6 +622,363 @@ public class Section {
 		}
 	}
 	
+	private static void recordKeyNote(TreeMap<Double, LanePosEvents[]> posEvents, int numKeys, int key, double pos, int data) {
+		LanePosEvents[] arr = posEvents.computeIfAbsent(pos, k -> new LanePosEvents[numKeys]);
+		if (arr[key] == null) {
+			arr[key] = new LanePosEvents();
+		}
+		arr[key].keyNotes.add(data);
+	}
+
+	private static void recordLongNote(TreeMap<Double, LanePosEvents[]> posEvents, int numKeys, int key, double pos, int data) {
+		LanePosEvents[] arr = posEvents.computeIfAbsent(pos, k -> new LanePosEvents[numKeys]);
+		if (arr[key] == null) {
+			arr[key] = new LanePosEvents();
+		}
+		arr[key].longNotes.add(data);
+	}
+
+	private static void recordMineNote(TreeMap<Double, LanePosEvents[]> posEvents, int numKeys, int key, double pos, int data) {
+		LanePosEvents[] arr = posEvents.computeIfAbsent(pos, k -> new LanePosEvents[numKeys]);
+		if (arr[key] == null) {
+			arr[key] = new LanePosEvents();
+		}
+		arr[key].mineNotes.add(data);
+	}
+
+	private void processChannelLines(int[] cassign, int[] wavmap, int[] bgamap, List<LongNote>[] lnlist, LongNote[] startln,
+			int lnobj, int cnobj, int hcnobj, int hlnobj, int lnmode, int base) {
+		final int numKeys = model.getMode().key;
+		final TreeMap<Double, LanePosEvents[]> posEvents = new TreeMap<Double, LanePosEvents[]>();
+		for (String line : channellines) {
+			int channel = ChartDecoder.parseInt36(line.charAt(4), line.charAt(5));
+			int tmpkey = 0;
+			if (channel >= P1_KEY_BASE && channel < P1_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P1_KEY_BASE];
+				channel = P1_KEY_BASE;
+			} else if (channel >= P2_KEY_BASE && channel < P2_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P2_KEY_BASE + 9];
+				channel = P1_KEY_BASE;
+			} else if (channel >= P1_INVISIBLE_KEY_BASE && channel < P1_INVISIBLE_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P1_INVISIBLE_KEY_BASE];
+				channel = P1_INVISIBLE_KEY_BASE;
+			} else if (channel >= P2_INVISIBLE_KEY_BASE && channel < P2_INVISIBLE_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P2_INVISIBLE_KEY_BASE + 9];
+				channel = P1_INVISIBLE_KEY_BASE;
+			} else if (channel >= P1_LONG_KEY_BASE && channel < P1_LONG_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P1_LONG_KEY_BASE];
+				channel = P1_LONG_KEY_BASE;
+			} else if (channel >= P2_LONG_KEY_BASE && channel < P2_LONG_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P2_LONG_KEY_BASE + 9];
+				channel = P1_LONG_KEY_BASE;
+			} else if (channel >= P1_MINE_KEY_BASE && channel < P1_MINE_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P1_MINE_KEY_BASE];
+				channel = P1_MINE_KEY_BASE;
+			} else if (channel >= P2_MINE_KEY_BASE && channel < P2_MINE_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P2_MINE_KEY_BASE + 9];
+				channel = P1_MINE_KEY_BASE;
+			}
+			final int key = tmpkey;
+			if (key == -1) {
+				continue;
+			}
+			switch (channel) {
+			case P1_KEY_BASE:
+				this.processData(line, (pos, data) -> recordKeyNote(posEvents, numKeys, key, pos, data));
+				break;
+			case P1_INVISIBLE_KEY_BASE:
+				this.processData(line, (pos, data) -> {
+					getTimeLine(sectionnum + rate * pos).setHiddenNote(key, new NormalNote(wavmap[data]));
+				});
+				break;
+			case P1_LONG_KEY_BASE:
+				this.processData(line, (pos, data) -> recordLongNote(posEvents, numKeys, key, pos, data));
+				break;
+			case P1_MINE_KEY_BASE:
+				this.processData(line, (pos, data) -> recordMineNote(posEvents, numKeys, key, pos, data));
+				break;
+			case LANE_AUTOPLAY:
+				this.processData(line, (pos, data) -> {
+					getTimeLine(sectionnum + rate * pos).addBackGroundNote(new NormalNote(wavmap[data]));
+				});
+				break;
+			case BGA_PLAY:
+				this.processData(line, (pos, data) -> {
+					getTimeLine(sectionnum + rate * pos).setBGA(bgamap[data]);
+				});
+				break;
+			case LAYER_PLAY:
+				this.processData(line, (pos, data) -> {
+					getTimeLine(sectionnum + rate * pos).setLayer(bgamap[data]);
+				});
+				break;
+			}
+		}
+
+		for (Map.Entry<Double, LanePosEvents[]> posEntry : posEvents.entrySet()) {
+			final double pos = posEntry.getKey();
+			final LanePosEvents[] arr = posEntry.getValue();
+			for (int key = 0; key < numKeys; key++) {
+				final LanePosEvents ev = arr[key];
+				if (ev == null) {
+					continue;
+				}
+				// 1. 専用LNチャネル (5x/6x) を先に処理して優先させる
+				for (int data : ev.longNotes) {
+					final TimeLine tl = getTimeLine(sectionnum + rate * pos);
+					boolean insideln = false;
+					if (lnlist[key] != null) {
+						final double section = tl.getSection();
+						for (LongNote ln : lnlist[key]) {
+							if (ln.getSection() <= section && section <= ln.getPair().getSection()) {
+								insideln = true;
+								break;
+							}
+						}
+					}
+
+					if (!insideln) {
+						if (startln[key] == null) {
+							if (tl.existNote(key)) {
+								Note note = tl.getNote(key);
+								log.add(new DecodeLog(WARNING, "LN開始位置に通常ノートが存在します。レーン: "
+										+ (key + 1) + " - Time(ms):" + tl.getTime()));
+								if (note instanceof NormalNote && note.getWav() != wavmap[data]) {
+									tl.addBackGroundNote(note);
+								}
+							}
+							LongNote ln = new LongNote(wavmap[data]);
+							tl.setNote(key, ln);
+							startln[key] = ln;
+						} else if (startln[key].getSection() == Double.MIN_VALUE) {
+							startln[key] = null;
+						} else {
+							for (Map.Entry<Double, TimeLineCache> e : tlcache.descendingMap().entrySet()) {
+								if (e.getKey() >= tl.getSection()) {
+									continue;
+								}
+								final TimeLine tl2 = e.getValue().timeline;
+								if (tl2.getSection() == startln[key].getSection()) {
+									Note note = startln[key];
+									((LongNote) note).setType(lnmode);
+									LongNote noteend = new LongNote(startln[key].getWav() != wavmap[data] ? wavmap[data] : -2);
+									tl.setNote(key, noteend);
+									((LongNote) note).setPair(noteend);
+									if (lnlist[key] == null) {
+										lnlist[key] = new ArrayList<LongNote>();
+									}
+									lnlist[key].add((LongNote) note);
+									startln[key] = null;
+									break;
+								} else if (tl2.existNote(key)) {
+									Note note = tl2.getNote(key);
+									log.add(new DecodeLog(WARNING, "LN内に通常ノートが存在します。レーン: "
+											+ (key + 1) + " - Time(ms):" + tl2.getTime()));
+									tl2.setNote(key, null);
+									if (note instanceof NormalNote) {
+										tl2.addBackGroundNote(note);
+									}
+								}
+							}
+						}
+					} else {
+						if (startln[key] == null) {
+							LongNote ln = new LongNote(wavmap[data]);
+							ln.setSection(Double.MIN_VALUE);
+							startln[key] = ln;
+							log.add(new DecodeLog(WARNING, "LN内にLN開始ノートを定義しようとしています : "
+									+ (key + 1) + " - Section : " + tl.getSection() + " - Time(ms):" + tl.getTime()));
+						} else {
+							if (startln[key].getSection() != Double.MIN_VALUE) {
+								tlcache.get(startln[key].getSection()).timeline.setNote(key, null);
+							}
+							startln[key] = null;
+							log.add(new DecodeLog(WARNING, "LN内にLN終端ノートを定義しようとしています : "
+									+ (key + 1) + " - Section : " + tl.getSection() + " - Time(ms):" + tl.getTime()));
+						}
+					}
+				}
+
+				// 2. 通常ノーツ・#xxxOBJマーカー (1x/2x) を処理する
+				if (!ev.keyNotes.isEmpty()) {
+					final TimeLine tl = getTimeLine(sectionnum + rate * pos);
+					final int existingCount = tl.existNote(key) ? 1 : 0;
+					for (int i = 0; i < ev.keyNotes.size(); i++) {
+						if (existingCount + i > 0) {
+							log.add(new DecodeLog(WARNING, "通常ノート追加時に衝突が発生しました : " + (key + 1) + ":"
+									+ tl.getTime()));
+						}
+					}
+
+					int maxMarkerPriority = 0;
+					int lastNormalData = -1;
+					TreeSet<Integer> uniqueNormalIds = null;
+					for (int data : ev.keyNotes) {
+						final int prio;
+						if (data == hlnobj) {
+							prio = 4;
+						} else if (data == hcnobj) {
+							prio = 3;
+						} else if (data == cnobj) {
+							prio = 2;
+						} else if (data == lnobj) {
+							prio = 1;
+						} else {
+							prio = 0;
+						}
+						if (prio > 0) {
+							if (prio > maxMarkerPriority) {
+								maxMarkerPriority = prio;
+							}
+						} else {
+							lastNormalData = data;
+							if (uniqueNormalIds == null) {
+								uniqueNormalIds = new TreeSet<Integer>();
+							}
+							uniqueNormalIds.add(data);
+						}
+					}
+
+					final Note existingAtTl = tl.getNote(key);
+					if (maxMarkerPriority > 0) {
+						final int objType = switch (maxMarkerPriority) {
+							case 4 -> LongNote.TYPE_HELLLONGNOTE;
+							case 3 -> LongNote.TYPE_HELLCHARGENOTE;
+							case 2 -> LongNote.TYPE_CHARGENOTE;
+							default -> lnmode;
+						};
+						if (existingAtTl instanceof LongNote existingLn && existingLn.isEnd() && existingLn.getPair() != null) {
+							// 既存の専用LN終点と同位置のマーカーはペアを変えず、重ねた通常ノーツのWAVのみID昇順で終点に付与する
+							if (uniqueNormalIds != null) {
+								for (int normId : uniqueNormalIds) {
+									addLayeredWavToEndNote(existingLn, wavmap[normId]);
+								}
+							}
+						} else if (existingAtTl != null || isInsideExistingLongNote(lnlist[key], tl.getSection())
+								|| (startln[key] != null && maxMarkerPriority > 1)) {
+							log.add(new DecodeLog(WARNING, "LNオブジェクトの対応が取れません。レーン: " + key
+									+ " - Time(ms):" + tl.getTime()));
+						} else {
+							boolean foundPreceding = false;
+							for (Map.Entry<Double, TimeLineCache> e : tlcache.descendingMap().entrySet()) {
+								if (e.getKey() >= tl.getSection()) {
+									continue;
+								}
+								final TimeLine tl2 = e.getValue().timeline;
+								if (tl2.existNote(key)) {
+									foundPreceding = true;
+									final Note note = tl2.getNote(key);
+									if (note instanceof NormalNote && startln[key] == null) {
+										LongNote ln = new LongNote(note.getWav());
+										ln.setType(objType);
+										for (Note layered : note.getLayeredNotes()) {
+											ln.addLayeredNote(layered);
+										}
+										tl2.setNote(key, ln);
+										LongNote lnend = new LongNote(-2);
+										if (uniqueNormalIds != null) {
+											for (int normId : uniqueNormalIds) {
+												addLayeredWavToEndNote(lnend, wavmap[normId]);
+											}
+										}
+										tl.setNote(key, lnend);
+										ln.setPair(lnend);
+										if (lnlist[key] == null) {
+											lnlist[key] = new ArrayList<LongNote>();
+										}
+										lnlist[key].add(ln);
+									} else if (maxMarkerPriority == 1 && note instanceof LongNote && ((LongNote) note).getPair() == null) {
+										log.add(new DecodeLog(WARNING,
+												"LNレーンで開始定義し、LNオブジェクトで終端定義しています。レーン: " + (key + 1) + " - Section : "
+														+ tl2.getSection() + " - " + tl.getSection()));
+										LongNote lnend = new LongNote(-2);
+										if (uniqueNormalIds != null) {
+											for (int normId : uniqueNormalIds) {
+												addLayeredWavToEndNote(lnend, wavmap[normId]);
+											}
+										}
+										tl.setNote(key, lnend);
+										((LongNote) note).setType(objType);
+										((LongNote) note).setPair(lnend);
+										if (lnlist[key] == null) {
+											lnlist[key] = new ArrayList<LongNote>();
+										}
+										lnlist[key].add((LongNote) note);
+										startln[key] = null;
+									} else {
+										log.add(new DecodeLog(WARNING, "LNオブジェクトの対応が取れません。レーン: " + key
+												+ " - Time(ms):" + tl2.getTime()));
+									}
+									break;
+								}
+							}
+							if (!foundPreceding) {
+								log.add(new DecodeLog(WARNING, "LNオブジェクトの対応が取れません。レーン: " + key
+										+ " - Time(ms):" + tl.getTime()));
+							}
+						}
+					} else if (lastNormalData >= 0) {
+						if (existingAtTl instanceof LongNote existingLn) {
+							if (!existingLn.isEnd()) {
+								log.add(new DecodeLog(WARNING, "LN開始位置に通常ノートが存在します。レーン: "
+										+ (key + 1) + " - Time(ms):" + tl.getTime()));
+								if (wavmap[lastNormalData] != existingLn.getWav()) {
+									tl.addBackGroundNote(new NormalNote(wavmap[lastNormalData]));
+								}
+							}
+						} else if (isInsideExistingLongNote(lnlist[key], tl.getSection())) {
+							log.add(new DecodeLog(WARNING, "LN内に通常ノートが存在します。レーン: "
+									+ (key + 1) + " - Time(ms):" + tl.getTime()));
+							tl.addBackGroundNote(new NormalNote(wavmap[lastNormalData]));
+						} else {
+							// マーカーのない通常ノーツ重複は既存の後勝ち規則を維持する
+							tl.setNote(key, new NormalNote(wavmap[lastNormalData]));
+						}
+					}
+				}
+
+				// 3. 地雷ノーツ (Dx/Ex) を処理する
+				for (int rawData : ev.mineNotes) {
+					int data = rawData;
+					final TimeLine tl = getTimeLine(sectionnum + rate * pos);
+					boolean insideln = tl.existNote(key) || isInsideExistingLongNote(lnlist[key], tl.getSection());
+					if (!insideln) {
+						if (base == 62) {
+							data = ChartDecoder.parseInt36(ChartDecoder.toBase62(data), 0);
+						}
+						tl.setNote(key, new MineNote(wavmap[0], data));
+					} else {
+						log.add(new DecodeLog(WARNING, "地雷ノート追加時に衝突が発生しました : " + (key + 1) + ":"
+								+ tl.getTime()));
+					}
+				}
+			}
+		}
+	}
+
+	private static boolean isInsideExistingLongNote(List<LongNote> lns, double section) {
+		if (lns == null) {
+			return false;
+		}
+		for (LongNote ln : lns) {
+			if (ln.getPair() != null && ln.getSection() <= section && section <= ln.getPair().getSection()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static void addLayeredWavToEndNote(LongNote lnend, int wav) {
+		if (wav < 0) {
+			return;
+		}
+		if (lnend.getWav() < 0) {
+			lnend.setWav(wav);
+			return;
+		}
+		lnend.addLayeredNote(new NormalNote(wav));
+	}
+
 	private TimeLine getTimeLine(double section) {
 		final TimeLineCache tlc = tlcache.get(section);
 		if (tlc != null) {

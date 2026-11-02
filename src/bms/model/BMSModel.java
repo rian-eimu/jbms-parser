@@ -105,6 +105,9 @@ public class BMSModel implements Comparable<BMSModel> {
 	private int lnmode = LongNote.TYPE_UNDEFINED;
 
 	private int lnobj = -1;
+	private int cnobj = -1;
+	private int hcnobj = -1;
+	private int hlnobj = -1;
 
 	/**
 	 * Whether this model is decoded by osu decoder or not
@@ -508,6 +511,30 @@ public class BMSModel implements Comparable<BMSModel> {
 
 	public void setLnobj(int lnobj) {
 		this.lnobj = lnobj;
+	}
+
+	public int getCnobj() {
+		return cnobj;
+	}
+
+	public void setCnobj(int cnobj) {
+		this.cnobj = cnobj;
+	}
+
+	public int getHcnobj() {
+		return hcnobj;
+	}
+
+	public void setHcnobj(int hcnobj) {
+		this.hcnobj = hcnobj;
+	}
+
+	public int getHlnobj() {
+		return hlnobj;
+	}
+
+	public void setHlnobj(int hlnobj) {
+		this.hlnobj = hlnobj;
 	}
 
 	public int getLnmode() {
