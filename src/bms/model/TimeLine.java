@@ -152,7 +152,7 @@ public class TimeLine {
 	public int getTotalNotes(int lntype) {
 		int count = 0;
 		for (Note note : notes) {
-			if (note != null) {
+			if (note != null && !note.isDummy()) {
 				if (note instanceof LongNote && !note.isFreeZoneInner()) {
 					final LongNote ln = (LongNote) note;
 					if (ln.getType() == LongNote.TYPE_CHARGENOTE || ln.getType() == LongNote.TYPE_HELLCHARGENOTE

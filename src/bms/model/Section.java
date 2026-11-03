@@ -35,6 +35,14 @@ public class Section {
 	public static final int P2_MINE_KEY_BASE = 14 * 36 + 1;
 	public static final int P1_POTION_KEY_BASE = 15 * 36 + 1;
 	public static final int P2_POTION_KEY_BASE = 16 * 36 + 1;
+	public static final int P1_DUMMY_KEY_BASE = 17 * 36 + 1;
+	public static final int P2_DUMMY_KEY_BASE = 18 * 36 + 1;
+	public static final int P1_DUMMY_LONG_KEY_BASE = 19 * 36 + 1;
+	public static final int P2_DUMMY_LONG_KEY_BASE = 20 * 36 + 1;
+	public static final int P1_DUMMY_MINE_KEY_BASE = 21 * 36 + 1;
+	public static final int P2_DUMMY_MINE_KEY_BASE = 22 * 36 + 1;
+	public static final int P1_DUMMY_POTION_KEY_BASE = 23 * 36 + 1;
+	public static final int P2_DUMMY_POTION_KEY_BASE = 24 * 36 + 1;
 
 	public static final int SCROLL = 1020;
 	public static final int P1_FREEZONE_LEGACY = 1 * 36 + 7;
@@ -46,7 +54,9 @@ public class Section {
 	public static final int SPEED = 1033;
 	
 	public static final int[] NOTE_CHANNELS = {P1_KEY_BASE, P2_KEY_BASE ,P1_INVISIBLE_KEY_BASE, P2_INVISIBLE_KEY_BASE, 
-			P1_LONG_KEY_BASE, P2_LONG_KEY_BASE, P1_MINE_KEY_BASE, P2_MINE_KEY_BASE, P1_POTION_KEY_BASE, P2_POTION_KEY_BASE};
+			P1_LONG_KEY_BASE, P2_LONG_KEY_BASE, P1_MINE_KEY_BASE, P2_MINE_KEY_BASE, P1_POTION_KEY_BASE, P2_POTION_KEY_BASE,
+			P1_DUMMY_KEY_BASE, P2_DUMMY_KEY_BASE, P1_DUMMY_LONG_KEY_BASE, P2_DUMMY_LONG_KEY_BASE,
+			P1_DUMMY_MINE_KEY_BASE, P2_DUMMY_MINE_KEY_BASE, P1_DUMMY_POTION_KEY_BASE, P2_DUMMY_POTION_KEY_BASE};
 
 	/**
 	 * 小節の拡大倍率
@@ -209,7 +219,8 @@ public class Section {
 				}
 			}
 			// 5/7KEY -> 10/14KEY			
-			if (((basech == P2_KEY_BASE || basech == P2_INVISIBLE_KEY_BASE || basech == P2_LONG_KEY_BASE || basech == P2_MINE_KEY_BASE || basech == P2_POTION_KEY_BASE)
+			if (((basech == P2_KEY_BASE || basech == P2_INVISIBLE_KEY_BASE || basech == P2_LONG_KEY_BASE || basech == P2_MINE_KEY_BASE || basech == P2_POTION_KEY_BASE
+					|| basech == P2_DUMMY_KEY_BASE || basech == P2_DUMMY_LONG_KEY_BASE || basech == P2_DUMMY_MINE_KEY_BASE || basech == P2_DUMMY_POTION_KEY_BASE)
 					&& (channel != P2_FREEZONE_LEGACY || legacyFreeZoneEnabled))
 					|| channel == P2_FREEZONE_SINGLE || channel == P2_FREEZONE_PAIR) {
 				final Mode mode = (model.getMode() == Mode.BEAT_5K) ? Mode.BEAT_10K : (model.getMode() == Mode.BEAT_7K ? Mode.BEAT_14K : null);
@@ -323,6 +334,10 @@ public class Section {
 		final List<Integer> keyNotes = new ArrayList<Integer>(2);
 		final List<Integer> mineNotes = new ArrayList<Integer>(1);
 		final List<Integer> potionNotes = new ArrayList<Integer>(1);
+		final List<Integer> dummyLongNotes = new ArrayList<Integer>(2);
+		final List<Integer> dummyKeyNotes = new ArrayList<Integer>(2);
+		final List<Integer> dummyMineNotes = new ArrayList<Integer>(1);
+		final List<Integer> dummyPotionNotes = new ArrayList<Integer>(1);
 	}
 
 	interface DataProcessor {
@@ -344,6 +359,10 @@ public class Section {
 	 * SectionモデルからTimeLineモデルを作成し、BMSModelに登録する
 	 */
 	public void makeTimeLines(int[] wavmap, int[] bgamap, TreeMap<Double, TimeLineCache> tlcache, List<LongNote>[] lnlist, LongNote[] startln) {
+		makeTimeLines(wavmap, bgamap, tlcache, lnlist, startln, new LongNote[model.getMode().key]);
+	}
+
+	public void makeTimeLines(int[] wavmap, int[] bgamap, TreeMap<Double, TimeLineCache> tlcache, List<LongNote>[] lnlist, LongNote[] startln, LongNote[] dummystartln) {
 		final int lnobj = model.getLnobj();
 		final int cnobj = model.getCnobj();
 		final int hcnobj = model.getHcnobj();
@@ -402,7 +421,7 @@ public class Section {
 			}
 		}
 		
-		processChannelLines(cassign, wavmap, bgamap, lnlist, startln, lnobj, cnobj, hcnobj, hlnobj, lnmode, base);
+		processChannelLines(cassign, wavmap, bgamap, lnlist, startln, dummystartln, lnobj, cnobj, hcnobj, hlnobj, lnmode, base);
 		if (cassign != null) {
 			return;
 		}
@@ -596,6 +615,18 @@ public class Section {
 					}
 				});
 				break;				
+			case P1_DUMMY_KEY_BASE:
+				this.processData(line, (pos, data) -> recordDummyKeyNote(posEvents, numKeys, key, pos, data));
+				break;
+			case P1_DUMMY_LONG_KEY_BASE:
+				this.processData(line, (pos, data) -> recordDummyLongNote(posEvents, numKeys, key, pos, data));
+				break;
+			case P1_DUMMY_MINE_KEY_BASE:
+				this.processData(line, (pos, data) -> recordDummyMineNote(posEvents, numKeys, key, pos, data));
+				break;
+			case P1_DUMMY_POTION_KEY_BASE:
+				this.processData(line, (pos, data) -> recordDummyPotionNote(posEvents, numKeys, key, pos, data));
+				break;
 			case P1_POTION_KEY_BASE:
 				this.processData(line, (pos, data) -> recordPotionNote(posEvents, numKeys, key, pos, data));
 				break;
@@ -680,7 +711,39 @@ public class Section {
 		arr[key].potionNotes.add(data);
 	}
 
-	private void processChannelLines(int[] cassign, int[] wavmap, int[] bgamap, List<LongNote>[] lnlist, LongNote[] startln,
+	private static void recordDummyKeyNote(TreeMap<Double, LanePosEvents[]> posEvents, int numKeys, int key, double pos, int data) {
+		LanePosEvents[] arr = posEvents.computeIfAbsent(pos, k -> new LanePosEvents[numKeys]);
+		if (arr[key] == null) {
+			arr[key] = new LanePosEvents();
+		}
+		arr[key].dummyKeyNotes.add(data);
+	}
+
+	private static void recordDummyLongNote(TreeMap<Double, LanePosEvents[]> posEvents, int numKeys, int key, double pos, int data) {
+		LanePosEvents[] arr = posEvents.computeIfAbsent(pos, k -> new LanePosEvents[numKeys]);
+		if (arr[key] == null) {
+			arr[key] = new LanePosEvents();
+		}
+		arr[key].dummyLongNotes.add(data);
+	}
+
+	private static void recordDummyMineNote(TreeMap<Double, LanePosEvents[]> posEvents, int numKeys, int key, double pos, int data) {
+		LanePosEvents[] arr = posEvents.computeIfAbsent(pos, k -> new LanePosEvents[numKeys]);
+		if (arr[key] == null) {
+			arr[key] = new LanePosEvents();
+		}
+		arr[key].dummyMineNotes.add(data);
+	}
+
+	private static void recordDummyPotionNote(TreeMap<Double, LanePosEvents[]> posEvents, int numKeys, int key, double pos, int data) {
+		LanePosEvents[] arr = posEvents.computeIfAbsent(pos, k -> new LanePosEvents[numKeys]);
+		if (arr[key] == null) {
+			arr[key] = new LanePosEvents();
+		}
+		arr[key].dummyPotionNotes.add(data);
+	}
+
+	private void processChannelLines(int[] cassign, int[] wavmap, int[] bgamap, List<LongNote>[] lnlist, LongNote[] startln, LongNote[] dummystartln,
 			int lnobj, int cnobj, int hcnobj, int hlnobj, int lnmode, int base) {
 		final int numKeys = model.getMode().key;
 		final TreeMap<Double, LanePosEvents[]> posEvents = new TreeMap<Double, LanePosEvents[]>();
@@ -714,6 +777,30 @@ public class Section {
 			} else if (channel >= P2_POTION_KEY_BASE && channel < P2_POTION_KEY_BASE + 9) {
 				tmpkey = cassign[channel - P2_POTION_KEY_BASE + 9];
 				channel = P1_POTION_KEY_BASE;
+			} else if (channel >= P1_DUMMY_KEY_BASE && channel < P1_DUMMY_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P1_DUMMY_KEY_BASE];
+				channel = P1_DUMMY_KEY_BASE;
+			} else if (channel >= P2_DUMMY_KEY_BASE && channel < P2_DUMMY_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P2_DUMMY_KEY_BASE + 9];
+				channel = P1_DUMMY_KEY_BASE;
+			} else if (channel >= P1_DUMMY_LONG_KEY_BASE && channel < P1_DUMMY_LONG_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P1_DUMMY_LONG_KEY_BASE];
+				channel = P1_DUMMY_LONG_KEY_BASE;
+			} else if (channel >= P2_DUMMY_LONG_KEY_BASE && channel < P2_DUMMY_LONG_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P2_DUMMY_LONG_KEY_BASE + 9];
+				channel = P1_DUMMY_LONG_KEY_BASE;
+			} else if (channel >= P1_DUMMY_MINE_KEY_BASE && channel < P1_DUMMY_MINE_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P1_DUMMY_MINE_KEY_BASE];
+				channel = P1_DUMMY_MINE_KEY_BASE;
+			} else if (channel >= P2_DUMMY_MINE_KEY_BASE && channel < P2_DUMMY_MINE_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P2_DUMMY_MINE_KEY_BASE + 9];
+				channel = P1_DUMMY_MINE_KEY_BASE;
+			} else if (channel >= P1_DUMMY_POTION_KEY_BASE && channel < P1_DUMMY_POTION_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P1_DUMMY_POTION_KEY_BASE];
+				channel = P1_DUMMY_POTION_KEY_BASE;
+			} else if (channel >= P2_DUMMY_POTION_KEY_BASE && channel < P2_DUMMY_POTION_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P2_DUMMY_POTION_KEY_BASE + 9];
+				channel = P1_DUMMY_POTION_KEY_BASE;
 			} else if (channel >= P2_MINE_KEY_BASE && channel < P2_MINE_KEY_BASE + 9) {
 				tmpkey = cassign[channel - P2_MINE_KEY_BASE + 9];
 				channel = P1_MINE_KEY_BASE;
@@ -733,6 +820,18 @@ public class Section {
 				break;
 			case P1_LONG_KEY_BASE:
 				this.processData(line, (pos, data) -> recordLongNote(posEvents, numKeys, key, pos, data));
+				break;
+			case P1_DUMMY_KEY_BASE:
+				this.processData(line, (pos, data) -> recordDummyKeyNote(posEvents, numKeys, key, pos, data));
+				break;
+			case P1_DUMMY_LONG_KEY_BASE:
+				this.processData(line, (pos, data) -> recordDummyLongNote(posEvents, numKeys, key, pos, data));
+				break;
+			case P1_DUMMY_MINE_KEY_BASE:
+				this.processData(line, (pos, data) -> recordDummyMineNote(posEvents, numKeys, key, pos, data));
+				break;
+			case P1_DUMMY_POTION_KEY_BASE:
+				this.processData(line, (pos, data) -> recordDummyPotionNote(posEvents, numKeys, key, pos, data));
 				break;
 			case P1_POTION_KEY_BASE:
 				this.processData(line, (pos, data) -> recordPotionNote(posEvents, numKeys, key, pos, data));
@@ -786,7 +885,7 @@ public class Section {
 								Note note = tl.getNote(key);
 								log.add(new DecodeLog(WARNING, "LN開始位置に通常ノートが存在します。レーン: "
 										+ (key + 1) + " - Time(ms):" + tl.getTime()));
-								if (note instanceof NormalNote && note.getWav() != wavmap[data]) {
+								if (note instanceof NormalNote && !note.isDummy() && note.getWav() != wavmap[data]) {
 									tl.addBackGroundNote(note);
 								}
 							}
@@ -818,7 +917,7 @@ public class Section {
 									log.add(new DecodeLog(WARNING, "LN内に通常ノートが存在します。レーン: "
 											+ (key + 1) + " - Time(ms):" + tl2.getTime()));
 									tl2.setNote(key, null);
-									if (note instanceof NormalNote) {
+									if (note instanceof NormalNote && !note.isDummy()) {
 										tl2.addBackGroundNote(note);
 									}
 								}
@@ -908,7 +1007,12 @@ public class Section {
 									continue;
 								}
 								final TimeLine tl2 = e.getValue().timeline;
-								if (tl2.existNote(key)) {
+								if (tl2.existNote(key) && !tl2.getNote(key).isDummy()) {
+									for (Map.Entry<Double, TimeLineCache> e2 : tlcache.subMap(tl2.getSection(), false, tl.getSection(), false).entrySet()) {
+										if (e2.getValue().timeline.existNote(key) && e2.getValue().timeline.getNote(key).isDummy()) {
+											e2.getValue().timeline.setNote(key, null);
+										}
+									}
 									foundPreceding = true;
 									final Note note = tl2.getNote(key);
 									if (note instanceof NormalNote && startln[key] == null) {
@@ -982,7 +1086,153 @@ public class Section {
 
 
 				// 3. 地雷ノーツ (Dx/Ex) および 4. ポーションノーツ (Fx/Gx) を処理する
-				for (int noteType = 0; noteType < 2; noteType++)
+				for (int noteType = 0; noteType < 2; noteType++) {
+					for (int rawData : (noteType == 0 ? ev.mineNotes : ev.potionNotes)) {
+						int data = rawData;
+						final TimeLine tl = getTimeLine(sectionnum + rate * pos);
+						boolean insideln = tl.existNote(key) || isInsideExistingLongNote(lnlist[key], tl.getSection());
+						if (!insideln) {
+							if (base == 62) {
+								data = ChartDecoder.parseInt36(ChartDecoder.toBase62(data), 0);
+							}
+							tl.setNote(key, noteType == 0 ? new MineNote(wavmap[0], data) : new PotionNote(-1, data));
+						} else {
+							log.add(new DecodeLog(WARNING, (noteType == 0 ? "地雷ノート" : "ポーションノート")
+									+ "追加時に衝突が発生しました : " + (key + 1) + ":" + tl.getTime()));
+						}
+					}
+				}
+
+				// 5. ダミーLNチャネル (Jx/Kx) を処理する
+				for (int ignored : ev.dummyLongNotes) {
+					final TimeLine tl = getTimeLine(sectionnum + rate * pos);
+					final boolean insideln = isInsideExistingLongNote(lnlist[key], tl.getSection()) || startln[key] != null;
+					if (!insideln) {
+						if (dummystartln[key] == null) {
+							if (tl.existNote(key)) {
+								LongNote ln = new LongNote(-2);
+								ln.setDummy(true);
+								ln.setSection(Double.MIN_VALUE);
+								dummystartln[key] = ln;
+								log.add(new DecodeLog(WARNING, "ダミーLN開始位置にノートが存在します。レーン: "
+										+ (key + 1) + " - Time(ms):" + tl.getTime()));
+							} else {
+								LongNote ln = new LongNote(-2);
+								ln.setDummy(true);
+								tl.setNote(key, ln);
+								dummystartln[key] = ln;
+							}
+						} else if (dummystartln[key].getSection() == Double.MIN_VALUE) {
+							dummystartln[key] = null;
+						} else if (tl.existNote(key)) {
+							if (dummystartln[key].getSection() != Double.MIN_VALUE) {
+								tlcache.get(dummystartln[key].getSection()).timeline.setNote(key, null);
+							}
+							dummystartln[key] = null;
+							log.add(new DecodeLog(WARNING, "ダミーLN終端位置にノートが存在します。レーン: "
+									+ (key + 1) + " - Time(ms):" + tl.getTime()));
+						} else {
+							boolean hasRealNoteBetween = false;
+							for (Map.Entry<Double, TimeLineCache> e : tlcache.descendingMap().entrySet()) {
+								if (e.getKey() >= tl.getSection()) {
+									continue;
+								}
+								final TimeLine tl2 = e.getValue().timeline;
+								if (tl2.getSection() == dummystartln[key].getSection()) {
+									break;
+								}
+								if (tl2.existNote(key) && !tl2.getNote(key).isDummy()) {
+									hasRealNoteBetween = true;
+									break;
+								}
+							}
+							if (hasRealNoteBetween) {
+								tlcache.get(dummystartln[key].getSection()).timeline.setNote(key, null);
+								dummystartln[key] = null;
+								log.add(new DecodeLog(WARNING, "ダミーLN内に通常ノートが存在します。レーン: "
+										+ (key + 1) + " - Time(ms):" + tl.getTime()));
+							} else {
+								for (Map.Entry<Double, TimeLineCache> e : tlcache.descendingMap().entrySet()) {
+									if (e.getKey() >= tl.getSection()) {
+										continue;
+									}
+									final TimeLine tl2 = e.getValue().timeline;
+									if (tl2.getSection() == dummystartln[key].getSection()) {
+										LongNote note = dummystartln[key];
+										note.setType(lnmode);
+										LongNote noteend = new LongNote(-2);
+										noteend.setDummy(true);
+										tl.setNote(key, noteend);
+										note.setPair(noteend);
+										if (lnlist[key] == null) {
+											lnlist[key] = new ArrayList<LongNote>();
+										}
+										lnlist[key].add(note);
+										dummystartln[key] = null;
+										break;
+									} else if (tl2.existNote(key)) {
+										log.add(new DecodeLog(WARNING, "ダミーLN内にダミーノートが存在します。レーン: "
+												+ (key + 1) + " - Time(ms):" + tl2.getTime()));
+										tl2.setNote(key, null);
+									}
+								}
+							}
+						}
+					} else {
+						if (dummystartln[key] == null) {
+							LongNote ln = new LongNote(-2);
+							ln.setDummy(true);
+							ln.setSection(Double.MIN_VALUE);
+							dummystartln[key] = ln;
+							log.add(new DecodeLog(WARNING, "LN内にダミーLN開始ノートを定義しようとしています : "
+									+ (key + 1) + " - Section : " + tl.getSection() + " - Time(ms):" + tl.getTime()));
+						} else {
+							if (dummystartln[key].getSection() != Double.MIN_VALUE) {
+								tlcache.get(dummystartln[key].getSection()).timeline.setNote(key, null);
+							}
+							dummystartln[key] = null;
+							log.add(new DecodeLog(WARNING, "LN内にダミーLN終端ノートを定義しようとしています : "
+									+ (key + 1) + " - Section : " + tl.getSection() + " - Time(ms):" + tl.getTime()));
+						}
+					}
+				}
+
+				// 6. ダミー通常ノーツ (Hx/Ix) を処理する
+				if (!ev.dummyKeyNotes.isEmpty()) {
+					final TimeLine tl = getTimeLine(sectionnum + rate * pos);
+					final boolean conflict = tl.existNote(key) || isInsideExistingLongNote(lnlist[key], tl.getSection())
+							|| startln[key] != null || dummystartln[key] != null;
+					final int existingCount = conflict ? 1 : 0;
+					for (int i = 0; i < ev.dummyKeyNotes.size(); i++) {
+						if (existingCount + i > 0) {
+							log.add(new DecodeLog(WARNING, "ダミー通常ノート追加時に衝突が発生しました : " + (key + 1) + ":"
+									+ tl.getTime()));
+						}
+					}
+					if (!conflict) {
+						NormalNote dn = new NormalNote(-1);
+						dn.setDummy(true);
+						tl.setNote(key, dn);
+					}
+				}
+
+				// 7. ダミー地雷ノーツ (Lx/Mx) および 8. ダミーポーションノーツ (Nx/Ox) を処理する
+				for (int noteType = 0; noteType < 2; noteType++) {
+					for (int ignored : (noteType == 0 ? ev.dummyMineNotes : ev.dummyPotionNotes)) {
+						final TimeLine tl = getTimeLine(sectionnum + rate * pos);
+						final boolean conflict = tl.existNote(key) || isInsideExistingLongNote(lnlist[key], tl.getSection())
+								|| startln[key] != null || dummystartln[key] != null;
+						if (!conflict) {
+							Note dn = (noteType == 0) ? new MineNote(-1, 0) : new PotionNote(-1, 0);
+							dn.setDummy(true);
+							tl.setNote(key, dn);
+						} else {
+							log.add(new DecodeLog(WARNING, (noteType == 0 ? "ダミー地雷ノート" : "ダミーポーションノート")
+									+ "追加時に衝突が発生しました : " + (key + 1) + ":" + tl.getTime()));
+						}
+					}
+				}
+				for (int noteType = 0; noteType < 0; noteType++)
 				for (int rawData : (noteType == 0 ? ev.mineNotes : ev.potionNotes)) {
 					int data = rawData;
 					final TimeLine tl = getTimeLine(sectionnum + rate * pos);
@@ -1150,6 +1400,9 @@ public class Section {
 			final List<Note> innerList = new ArrayList<>();
 			for (TimeLineCache tlc : tlcache.subMap(startTl.getSection() - 1e-9, true, endTl.getSection() + 1e-9, true).values()) {
 				final Note n = tlc.timeline.getNote(lane);
+				if (n != null && n.isDummy()) {
+					continue;
+				}
 				if (n instanceof NormalNote normalNote) {
 					normalNote.setFreeZoneInner(true);
 					innerList.add(normalNote);

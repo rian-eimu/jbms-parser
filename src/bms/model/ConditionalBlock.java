@@ -323,6 +323,7 @@ public class ConditionalBlock {
 			final TreeMap<Double, TimeLineCache> timelines = new TreeMap<>();
 			final List<LongNote>[] lnlist = new List[model.getMode().key];
 			final LongNote[] lnendstatus = new LongNote[model.getMode().key];
+			final LongNote[] dummylnendstatus = new LongNote[model.getMode().key];
 			final TimeLine basetl = new TimeLine(0, 0, model.getMode().key);
 			basetl.setBPM(model.getBpm());
 			if (bm[0] != -2) {
@@ -335,7 +336,7 @@ public class ConditionalBlock {
 			}
 			timelines.put(0.0, new TimeLineCache(0.0, basetl));
 			for (Section section : sections) {
-				section.makeTimeLines(wm, bm, timelines, lnlist, lnendstatus);
+				section.makeTimeLines(wm, bm, timelines, lnlist, lnendstatus, dummylnendstatus);
 			}
 			Section.resolveFreeZones(sections, model, timelines, log);
 
@@ -356,6 +357,17 @@ public class ConditionalBlock {
 			model.setAllTimeLine(tl);
 			model.setConditionalEvalTimeLines(evalTimeLines);
 
+			for (int i = 0; i < dummylnendstatus.length; i++) {
+				if (dummylnendstatus[i] != null) {
+					log.add(new DecodeLog(WARNING, "曲の終端までにダミーLN終端定義されていないダミーLNがあります。lane:" + (i + 1)));
+					if (dummylnendstatus[i].getSection() != Double.MIN_VALUE) {
+						TimeLineCache tlc = timelines.get(dummylnendstatus[i].getSection());
+						if (tlc != null) {
+							tlc.timeline.setNote(i, null);
+						}
+					}
+				}
+			}
 			for (int i = 0; i < lnendstatus.length; i++) {
 				if (lnendstatus[i] != null) {
 					log.add(new DecodeLog(WARNING, "曲の終端までにLN終端定義されていないLNがあります。lane:" + (i + 1)));

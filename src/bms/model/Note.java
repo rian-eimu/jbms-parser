@@ -47,6 +47,10 @@ public abstract class Note implements Cloneable {
 	 * フリーゾーン区間内に内包されるノートかどうか
 	 */
 	private boolean freeZoneInner;
+	/**
+	 * ダミーノートかどうか
+	 */
+	private boolean dummy;
 
 	public boolean isFreeZoneInner() {
 		return freeZoneInner;
@@ -54,6 +58,14 @@ public abstract class Note implements Cloneable {
 
 	public void setFreeZoneInner(boolean freeZoneInner) {
 		this.freeZoneInner = freeZoneInner;
+	}
+
+	public boolean isDummy() {
+		return dummy;
+	}
+
+	public void setDummy(boolean dummy) {
+		this.dummy = dummy;
 	}
 
 	public int getWav() {

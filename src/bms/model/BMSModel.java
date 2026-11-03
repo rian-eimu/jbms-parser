@@ -452,7 +452,7 @@ public class BMSModel implements Comparable<BMSModel> {
 		final int keys = mode.key;
 		for (TimeLine tl : timelines) {
 			for (int i = 0; i < keys; i++) {
-				if (tl.getNote(i) != null && tl.getNote(i) instanceof LongNote
+				if (tl.getNote(i) != null && tl.getNote(i) instanceof LongNote && !tl.getNote(i).isDummy()
 						&& ((LongNote) tl.getNote(i)).getType() == LongNote.TYPE_UNDEFINED) {
 					return true;
 				}
@@ -465,7 +465,7 @@ public class BMSModel implements Comparable<BMSModel> {
 		final int keys = mode.key;
 		for (TimeLine tl : timelines) {
 			for (int i = 0; i < keys; i++) {
-				if (tl.getNote(i) instanceof LongNote) {
+				if (tl.getNote(i) instanceof LongNote && !tl.getNote(i).isDummy()) {
 					return true;
 				}
 			}
@@ -477,7 +477,7 @@ public class BMSModel implements Comparable<BMSModel> {
 		final int keys = mode.key;
 		for (TimeLine tl : timelines) {
 			for (int i = 0; i < keys; i++) {
-				if (tl.getNote(i) instanceof MineNote) {
+				if (tl.getNote(i) instanceof MineNote && !tl.getNote(i).isDummy()) {
 					return true;
 				}
 			}

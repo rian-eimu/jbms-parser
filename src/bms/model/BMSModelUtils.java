@@ -90,14 +90,14 @@ public class BMSModelUtils {
 					break;
 				case TOTALNOTES_KEY:
 					for (int lane : nlane) {
-						if (tl.existNote(lane) && (tl.getNote(lane) instanceof NormalNote) && !((NormalNote) tl.getNote(lane)).isFreeZoneInner()) {
+						if (tl.existNote(lane) && (tl.getNote(lane) instanceof NormalNote) && !tl.getNote(lane).isDummy() && !((NormalNote) tl.getNote(lane)).isFreeZoneInner()) {
 							count++;
 						}
 					}
 					break;
 				case TOTALNOTES_LONG_KEY:
 					for (int lane : nlane) {
-						if (tl.existNote(lane) && (tl.getNote(lane) instanceof LongNote) && !tl.getNote(lane).isFreeZoneInner()) {
+						if (tl.existNote(lane) && (tl.getNote(lane) instanceof LongNote) && !tl.getNote(lane).isDummy() && !tl.getNote(lane).isFreeZoneInner()) {
 							LongNote ln = (LongNote) tl.getNote(lane);
 							if (ln.getType() == LongNote.TYPE_CHARGENOTE
 									|| ln.getType() == LongNote.TYPE_HELLCHARGENOTE
@@ -115,7 +115,7 @@ public class BMSModelUtils {
 						}
 					}
 					for (int lane : slane) {
-						if (tl.existNote(lane) && (tl.getNote(lane) instanceof NormalNote) && !((NormalNote) tl.getNote(lane)).isFreeZoneInner()) {
+						if (tl.existNote(lane) && (tl.getNote(lane) instanceof NormalNote) && !tl.getNote(lane).isDummy() && !((NormalNote) tl.getNote(lane)).isFreeZoneInner()) {
 							count++;
 						}
 					}
@@ -123,7 +123,7 @@ public class BMSModelUtils {
 				case TOTALNOTES_LONG_SCRATCH:
 					for (int lane : slane) {
 						final Note n = tl.getNote(lane);
-						if (n instanceof LongNote && !n.isFreeZoneInner()) {
+						if (n instanceof LongNote && !n.isDummy() && !n.isFreeZoneInner()) {
 							final LongNote ln = (LongNote) n;
 							if (ln.getType() == LongNote.TYPE_CHARGENOTE
 									|| ln.getType() == LongNote.TYPE_HELLCHARGENOTE
@@ -136,12 +136,12 @@ public class BMSModelUtils {
 					break;
 				case TOTALNOTES_MINE:
 					for (int lane : nlane) {
-						if (tl.existNote(lane) && (tl.getNote(lane) instanceof MineNote)) {
+						if (tl.existNote(lane) && (tl.getNote(lane) instanceof MineNote) && !tl.getNote(lane).isDummy()) {
 							count++;
 						}
 					}
 					for (int lane : slane) {
-						if (tl.existNote(lane) && (tl.getNote(lane) instanceof MineNote)) {
+						if (tl.existNote(lane) && (tl.getNote(lane) instanceof MineNote) && !tl.getNote(lane).isDummy()) {
 							count++;
 						}
 					}

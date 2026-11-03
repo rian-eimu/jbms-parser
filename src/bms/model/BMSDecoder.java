@@ -400,6 +400,7 @@ public class BMSDecoder extends ChartDecoder {
 			final TreeMap<Double, TimeLineCache> timelines = new TreeMap<Double, TimeLineCache>();
 			final List<LongNote>[] lnlist = new List[model.getMode().key];
 			LongNote[] lnendstatus = new LongNote[model.getMode().key];
+			LongNote[] dummylnendstatus = new LongNote[model.getMode().key];
 			final TimeLine basetl = new TimeLine(0, 0, model.getMode().key);
 			basetl.setBPM(model.getBpm());
 			if (bm[0] != -2) {
@@ -412,7 +413,7 @@ public class BMSDecoder extends ChartDecoder {
 			}
 			timelines.put(0.0, new TimeLineCache(0.0, basetl));
 			for (Section section : sections) {
-				section.makeTimeLines(wm, bm, timelines, lnlist, lnendstatus);
+				section.makeTimeLines(wm, bm, timelines, lnlist, lnendstatus, dummylnendstatus);
 			}
 			// Logger.getGlobal().info(
 			// "Section生成時間(ms) :" + (System.currentTimeMillis() - time));
@@ -431,6 +432,14 @@ public class BMSDecoder extends ChartDecoder {
 				return null;
 			}
 
+			for (int i = 0; i < dummylnendstatus.length; i++) {
+				if (dummylnendstatus[i] != null) {
+					log.add(new DecodeLog(WARNING, "曲の終端までにダミーLN終端定義されていないダミーLNがあります。lane:" + (i + 1)));
+					if (dummylnendstatus[i].getSection() != Double.MIN_VALUE) {
+						timelines.get(dummylnendstatus[i].getSection()).timeline.setNote(i, null);
+					}
+				}
+			}
 			for (int i = 0; i < lnendstatus.length; i++) {
 				if (lnendstatus[i] != null) {
 					log.add(new DecodeLog(WARNING, "曲の終端までにLN終端定義されていないLNがあります。lane:" + (i + 1)));
@@ -851,7 +860,9 @@ public class BMSDecoder extends ChartDecoder {
 					}
 				}
 				if (((basech == Section.P2_KEY_BASE || basech == Section.P2_INVISIBLE_KEY_BASE
-						|| basech == Section.P2_LONG_KEY_BASE || basech == Section.P2_MINE_KEY_BASE || basech == Section.P2_POTION_KEY_BASE)
+						|| basech == Section.P2_LONG_KEY_BASE || basech == Section.P2_MINE_KEY_BASE || basech == Section.P2_POTION_KEY_BASE
+						|| basech == Section.P2_DUMMY_KEY_BASE || basech == Section.P2_DUMMY_LONG_KEY_BASE
+						|| basech == Section.P2_DUMMY_MINE_KEY_BASE || basech == Section.P2_DUMMY_POTION_KEY_BASE)
 						&& (channel != Section.P2_FREEZONE_LEGACY || legacyFreeZoneEnabled))
 						|| (model.getMode() != Mode.POPN_9K && (channel == Section.P2_FREEZONE_SINGLE || channel == Section.P2_FREEZONE_PAIR))) {
 					final Mode nextMode = (model.getMode() == Mode.BEAT_5K) ? Mode.BEAT_10K
