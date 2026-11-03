@@ -83,6 +83,10 @@ public class BMSDecoder extends ChartDecoder {
 	
 	private static final CommandWord[] commandWords = CommandWord.values();
 
+	public static final long LEGACY_FREEZONE_CUTOFF_MILLIS = java.time.ZonedDateTime
+			.of(2000, 12, 31, 23, 59, 59, 999_000_000, java.time.ZoneId.systemDefault())
+			.toInstant().toEpochMilli();
+
 	/**
 	 * 指定したBMSファイルをモデルにデコードする
 	 *
@@ -105,6 +109,9 @@ public class BMSDecoder extends ChartDecoder {
 
 	private BMSModel decode(ChartSource source, byte[] data, boolean ispms, int[] selectedRandom) {
 		final String path = source != null ? source.location() : null;
+		final boolean legacyFreeZoneEnabled = !ispms && source != null
+				&& source.lastModifiedTimeMillis() > 0
+				&& source.lastModifiedTimeMillis() <= LEGACY_FREEZONE_CUTOFF_MILLIS;
 		log.clear();
 		final long time = System.currentTimeMillis();
 		BMSModel model = new BMSModel();
@@ -386,7 +393,7 @@ public class BMSDecoder extends ChartDecoder {
 			Section[] sections = new Section[maxsec + 1];
 			for (int i = 0; i <= maxsec; i++) {
 				sections[i] = new Section(model, prev, lines[i] != null ? lines[i] : Collections.EMPTY_LIST, bpmtable,
-						stoptable, scrolltable, speedtable, log);
+						stoptable, scrolltable, speedtable, log, legacyFreeZoneEnabled);
 				prev = sections[i];
 			}
 
@@ -409,6 +416,7 @@ public class BMSDecoder extends ChartDecoder {
 			}
 			// Logger.getGlobal().info(
 			// "Section生成時間(ms) :" + (System.currentTimeMillis() - time));
+			Section.resolveFreeZones(sections, model, timelines, log);
 			TimeLine[] tl = new TimeLine[timelines.size()];
 			int tlcount = 0;
 			for(TimeLineCache tlc : timelines.values()) {
@@ -433,7 +441,7 @@ public class BMSDecoder extends ChartDecoder {
 			}
 
 			if (!conditionalBlocks.isEmpty()) {
-				prepareConditionalModel(model, conditionalBlocks, channelEntries, bpmtable, stoptable, scrolltable, speedtable, wm, bm, maxsec);
+				prepareConditionalModel(model, conditionalBlocks, channelEntries, bpmtable, stoptable, scrolltable, speedtable, wm, bm, maxsec, legacyFreeZoneEnabled);
 				tl = model.getAllTimeLines();
 				if (tl.length == 0 || tl[0].getBPM() == 0) {
 					log.add(new DecodeLog(ERROR, "開始BPMが定義されていないため、BMS解析に失敗しました"));
@@ -752,7 +760,7 @@ public class BMSDecoder extends ChartDecoder {
 			List<ConditionalBlock.ChannelLineEntry> channelEntries,
 			Map<Integer, Double> bpmtable, Map<Integer, Double> stoptable,
 			Map<Integer, Double> scrolltable, Map<Integer, Double> speedtable,
-			int[] wm, int[] bm, int maxsec) {
+			int[] wm, int[] bm, int maxsec, boolean legacyFreeZoneEnabled) {
 		final int base = model.getBase();
 		final int lnobj = model.getLnobj();
 		final int cnobj = model.getCnobj();
@@ -760,6 +768,7 @@ public class BMSDecoder extends ChartDecoder {
 		final int hlnobj = model.getHlnobj();
 		final Set<Integer> wavIdSet = new TreeSet<Integer>();
 		boolean hasMine = false;
+		boolean hasFreeZone = false;
 		int maxBar = maxsec;
 
 		for (ConditionalBlock.ChannelLineEntry entry : channelEntries) {
@@ -819,6 +828,16 @@ public class BMSDecoder extends ChartDecoder {
 							if (wm[0] >= 0) {
 								wavIdSet.add(wm[0]);
 							}
+						} else if (model.getMode() != Mode.POPN_9K && (channel == Section.P1_FREEZONE_SINGLE
+								|| channel == Section.P1_FREEZONE_PAIR
+								|| channel == Section.P2_FREEZONE_SINGLE
+								|| channel == Section.P2_FREEZONE_PAIR
+								|| (legacyFreeZoneEnabled && (channel == Section.P1_FREEZONE_LEGACY || channel == Section.P2_FREEZONE_LEGACY)))) {
+							hasFreeZone = true;
+						}
+						if (model.getMode() != Mode.POPN_9K && legacyFreeZoneEnabled
+								&& (channel == Section.P1_FREEZONE_LEGACY || channel == Section.P2_FREEZONE_LEGACY)) {
+							hasFreeZone = true;
 						}
 					}
 				}
@@ -831,8 +850,10 @@ public class BMSDecoder extends ChartDecoder {
 						model.setMode(nextMode);
 					}
 				}
-				if (basech == Section.P2_KEY_BASE || basech == Section.P2_INVISIBLE_KEY_BASE
-						|| basech == Section.P2_LONG_KEY_BASE || basech == Section.P2_MINE_KEY_BASE) {
+				if (((basech == Section.P2_KEY_BASE || basech == Section.P2_INVISIBLE_KEY_BASE
+						|| basech == Section.P2_LONG_KEY_BASE || basech == Section.P2_MINE_KEY_BASE)
+						&& (channel != Section.P2_FREEZONE_LEGACY || legacyFreeZoneEnabled))
+						|| (model.getMode() != Mode.POPN_9K && (channel == Section.P2_FREEZONE_SINGLE || channel == Section.P2_FREEZONE_PAIR))) {
 					final Mode nextMode = (model.getMode() == Mode.BEAT_5K) ? Mode.BEAT_10K
 							: (model.getMode() == Mode.BEAT_7K ? Mode.BEAT_14K : null);
 					if (nextMode != null) {
@@ -850,12 +871,13 @@ public class BMSDecoder extends ChartDecoder {
 		final ConditionalBlock[] blocksArray = conditionalBlocks.toArray(new ConditionalBlock[0]);
 		final ConditionalBlock.ChartBuilder builder = new ConditionalBlock.ChartBuilder(
 				channelEntries, blocksArray, bpmtable, stoptable, scrolltable, speedtable,
-				wm, bm, model.getMode(), maxBar);
+				wm, bm, model.getMode(), maxBar, legacyFreeZoneEnabled);
 
 		model.setConditionalBlocks(blocksArray);
 		model.setConditionalChartBuilder(builder);
 		model.setConditionalWavIds(condWavIds);
 		model.setConditionalContainsMineNote(hasMine);
+		model.setConditionalContainsFreeZone(hasFreeZone);
 
 		builder.buildTimeLines(model, null, log);
 	}

@@ -22,5 +22,14 @@ public interface ChartSource {
 	 * @throws IOException 入出力例外
 	 */
 	InputStream openStream() throws IOException;
+
+	/**
+	 * 譜面データの最終更新日時(エポックミリ秒)を返す。取得できない場合は -1L を返す。
+	 *
+	 * @return 最終更新日時(ms) または -1L
+	 */
+	default long lastModifiedTimeMillis() {
+		return -1L;
+	}
 }
 

@@ -27,6 +27,10 @@ public class TimeLine {
 	 */
 	private Note[] hiddennotes;
 	/**
+	 * タイムライン上に配置されている演奏レーン分のフリーゾーンノート（始点または終点）。配置されていないレーンにはnullを入れる。
+	 */
+	private FreeZoneNote[] freezones;
+	/**
 	 * タイムライン上に配置されているBGMノート
 	 */
 	private Note[] bgnotes = Note.EMPTYARRAY;
@@ -72,6 +76,7 @@ public class TimeLine {
 		this.time = time;
 		notes = new Note[notesize];
 		hiddennotes = new Note[notesize];
+		freezones = new FreeZoneNote[notesize];
 	}
 
 	public int getTime() {
@@ -87,6 +92,11 @@ public class TimeLine {
 	}
 
 	protected void setMicroTime(long time) {
+		for(FreeZoneNote fz : freezones) {
+			if(fz != null) {
+				fz.setMicroTime(time);
+			}
+		}
 		this.time = time;
 		for(Note n : notes) {
 			if(n != null) {
@@ -111,14 +121,17 @@ public class TimeLine {
 		if(notes.length != lanes) {
 			Note[] newnotes = new Note[lanes];
 			Note[] newhiddennotes = new Note[lanes];
+			FreeZoneNote[] newfreezones = new FreeZoneNote[lanes];
 			for(int i = 0;i < lanes;i++) {
 				if(i < notes.length) {
 					newnotes[i] = notes[i];
 					newhiddennotes[i] = hiddennotes[i];
+					newfreezones[i] = freezones[i];
 				}
 			}
 			notes = newnotes;
 			hiddennotes = newhiddennotes;
+			freezones = newfreezones;
 		}
 	}
 
@@ -140,16 +153,21 @@ public class TimeLine {
 		int count = 0;
 		for (Note note : notes) {
 			if (note != null) {
-				if (note instanceof LongNote) {
+				if (note instanceof LongNote && !note.isFreeZoneInner()) {
 					final LongNote ln = (LongNote) note;
 					if (ln.getType() == LongNote.TYPE_CHARGENOTE || ln.getType() == LongNote.TYPE_HELLCHARGENOTE
 							|| (ln.getType() == LongNote.TYPE_UNDEFINED && lntype != BMSModel.LNTYPE_LONGNOTE && lntype != BMSModel.LNTYPE_HELLLONGNOTE)
 							|| !ln.isEnd()) {
 						count++;
 					}
-				} else if (note instanceof NormalNote) {
+				} else if (note instanceof NormalNote && !((NormalNote) note).isFreeZoneInner()) {
 					count++;
 				}
+			}
+		}
+		for (FreeZoneNote fz : freezones) {
+			if (fz != null && !fz.isEnd()) {
+				count++;
 			}
 		}
 		return count;
@@ -201,6 +219,32 @@ public class TimeLine {
 
 	public Note getHiddenNote(int lane) {
 		return hiddennotes[lane];
+	}
+
+	public boolean existFreeZone() {
+		for (FreeZoneNote fz : freezones) {
+			if (fz != null) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public boolean existFreeZone(int lane) {
+		return freezones[lane] != null;
+	}
+
+	public FreeZoneNote getFreeZone(int lane) {
+		return freezones[lane];
+	}
+
+	public void setFreeZone(int lane, FreeZoneNote fz) {
+		freezones[lane] = fz;
+		if (fz == null) {
+			return;
+		}
+		fz.setSection(section);
+		fz.setMicroTime(time);
 	}
 
 	public void addBackGroundNote(Note note) {
@@ -294,6 +338,11 @@ public class TimeLine {
 	}
 
 	public void setSection(double section) {
+		for(FreeZoneNote fz : freezones) {
+			if(fz != null) {
+				fz.setSection(section);
+			}
+		}
 		for(Note n : notes) {
 			if(n != null) {
 				n.setSection(section);					

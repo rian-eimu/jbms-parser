@@ -90,14 +90,14 @@ public class BMSModelUtils {
 					break;
 				case TOTALNOTES_KEY:
 					for (int lane : nlane) {
-						if (tl.existNote(lane) && (tl.getNote(lane) instanceof NormalNote)) {
+						if (tl.existNote(lane) && (tl.getNote(lane) instanceof NormalNote) && !((NormalNote) tl.getNote(lane)).isFreeZoneInner()) {
 							count++;
 						}
 					}
 					break;
 				case TOTALNOTES_LONG_KEY:
 					for (int lane : nlane) {
-						if (tl.existNote(lane) && (tl.getNote(lane) instanceof LongNote)) {
+						if (tl.existNote(lane) && (tl.getNote(lane) instanceof LongNote) && !tl.getNote(lane).isFreeZoneInner()) {
 							LongNote ln = (LongNote) tl.getNote(lane);
 							if (ln.getType() == LongNote.TYPE_CHARGENOTE
 									|| ln.getType() == LongNote.TYPE_HELLCHARGENOTE
@@ -110,7 +110,12 @@ public class BMSModelUtils {
 					break;
 				case TOTALNOTES_SCRATCH:
 					for (int lane : slane) {
-						if (tl.existNote(lane) && (tl.getNote(lane) instanceof NormalNote)) {
+						if (tl.existFreeZone(lane) && !tl.getFreeZone(lane).isEnd()) {
+							count++;
+						}
+					}
+					for (int lane : slane) {
+						if (tl.existNote(lane) && (tl.getNote(lane) instanceof NormalNote) && !((NormalNote) tl.getNote(lane)).isFreeZoneInner()) {
 							count++;
 						}
 					}
@@ -118,7 +123,7 @@ public class BMSModelUtils {
 				case TOTALNOTES_LONG_SCRATCH:
 					for (int lane : slane) {
 						final Note n = tl.getNote(lane);
-						if (n instanceof LongNote) {
+						if (n instanceof LongNote && !n.isFreeZoneInner()) {
 							final LongNote ln = (LongNote) n;
 							if (ln.getType() == LongNote.TYPE_CHARGENOTE
 									|| ln.getType() == LongNote.TYPE_HELLCHARGENOTE
@@ -203,7 +208,7 @@ public class BMSModelUtils {
 			if(tl.getMilliTime() >= starttime) {
 				break;
 			}
-			if(tl.existNote()) {
+			if(tl.existNote() || tl.existFreeZone()) {
 				marginTime = starttime - tl.getMilliTime();
 				break;
 			}

@@ -235,11 +235,20 @@ public class ConditionalBlock {
 		private final int[] bm;
 		private final Mode resolvedMode;
 		private final int maxBarIndex;
+		private final boolean legacyFreeZoneEnabled;
 
 		public ChartBuilder(List<ChannelLineEntry> entries, ConditionalBlock[] blocks,
 				Map<Integer, Double> bpmtable, Map<Integer, Double> stoptable,
 				Map<Integer, Double> scrolltable, Map<Integer, Double> speedtable,
 				int[] wm, int[] bm, Mode resolvedMode, int maxBarIndex) {
+			this(entries, blocks, bpmtable, stoptable, scrolltable, speedtable, wm, bm, resolvedMode, maxBarIndex, false);
+		}
+
+		public ChartBuilder(List<ChannelLineEntry> entries, ConditionalBlock[] blocks,
+				Map<Integer, Double> bpmtable, Map<Integer, Double> stoptable,
+				Map<Integer, Double> scrolltable, Map<Integer, Double> speedtable,
+				int[] wm, int[] bm, Mode resolvedMode, int maxBarIndex, boolean legacyFreeZoneEnabled) {
+			this.legacyFreeZoneEnabled = legacyFreeZoneEnabled;
 			this.entries = new ArrayList<>(entries);
 			this.blocks = blocks.clone();
 			this.bpmtable = new TreeMap<>(bpmtable);
@@ -307,7 +316,7 @@ public class ConditionalBlock {
 			final Section[] sections = new Section[maxBarIndex + 1];
 			for (int i = 0; i <= maxBarIndex; i++) {
 				sections[i] = new Section(model, prev, barLines[i] != null ? barLines[i] : Collections.emptyList(),
-						bpmtable, stoptable, scrolltable, speedtable, log);
+						bpmtable, stoptable, scrolltable, speedtable, log, legacyFreeZoneEnabled);
 				prev = sections[i];
 			}
 
@@ -328,6 +337,7 @@ public class ConditionalBlock {
 			for (Section section : sections) {
 				section.makeTimeLines(wm, bm, timelines, lnlist, lnendstatus);
 			}
+			Section.resolveFreeZones(sections, model, timelines, log);
 
 			// 各CONDITIONALブロックの評価位置に対応するTimeLineを取得（未生成なら生成）
 			final TimeLine[] evalTimeLines = new TimeLine[blocks.length];
@@ -399,6 +409,7 @@ public class ConditionalBlock {
 			branched.setConditionalChartBuilder(this);
 			branched.setConditionalWavIds(baseModel.getConditionalWavIds());
 			branched.setConditionalContainsMineNote(baseModel.isConditionalContainsMineNote());
+			branched.setConditionalContainsFreeZone(baseModel.isConditionalContainsFreeZone());
 
 			List<DecodeLog> dummyLog = new ArrayList<>();
 			buildTimeLines(branched, selectedBranches, dummyLog);

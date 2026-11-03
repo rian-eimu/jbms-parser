@@ -12,7 +12,16 @@ public class Lane {
 	private int hiddenbasepos;
 	private int hiddenseekpos;
 
+	private FreeZoneNote[] freezones = FreeZoneNote.EMPTYARRAY;
+
 	public Lane(BMSModel model, int lane) {
+		Collection<FreeZoneNote> fznote = new ArrayDeque<FreeZoneNote>();
+		for (TimeLine tl : model.getAllTimeLines()) {
+			if (tl.getFreeZone(lane) != null && !tl.getFreeZone(lane).isEnd()) {
+				fznote.add(tl.getFreeZone(lane));
+			}
+		}
+		freezones = fznote.toArray(new FreeZoneNote[fznote.size()]);
 		Collection<Note> note = new ArrayDeque<Note>();
 		Collection<Note> hnote = new ArrayDeque<Note>();
 		for (TimeLine tl : model.getAllTimeLines()) {
@@ -35,6 +44,10 @@ public class Lane {
 		return hiddens;
 	}
 
+	public FreeZoneNote[] getFreeZones() {
+		return freezones;
+	}
+
 	public Note getNote() {
 		if (noteseekpos < notes.length) {
 			return notes[noteseekpos++];
@@ -55,6 +68,13 @@ public class Lane {
 	}
 
 	public void update(BMSModel model, int lane, int time) {
+		Collection<FreeZoneNote> fznote = new ArrayDeque<FreeZoneNote>();
+		for (TimeLine tl : model.getAllTimeLines()) {
+			if (tl.getFreeZone(lane) != null && !tl.getFreeZone(lane).isEnd()) {
+				fznote.add(tl.getFreeZone(lane));
+			}
+		}
+		freezones = fznote.toArray(new FreeZoneNote[fznote.size()]);
 		Collection<Note> note = new ArrayDeque<Note>();
 		Collection<Note> hnote = new ArrayDeque<Note>();
 		for (TimeLine tl : model.getAllTimeLines()) {

@@ -35,6 +35,12 @@ public class Section {
 	public static final int P2_MINE_KEY_BASE = 14 * 36 + 1;
 
 	public static final int SCROLL = 1020;
+	public static final int P1_FREEZONE_LEGACY = 1 * 36 + 7;
+	public static final int P2_FREEZONE_LEGACY = 2 * 36 + 7;
+	public static final int P1_FREEZONE_SINGLE = 28 * 36 + 15;
+	public static final int P1_FREEZONE_PAIR = 28 * 36 + 16;
+	public static final int P2_FREEZONE_SINGLE = 28 * 36 + 17;
+	public static final int P2_FREEZONE_PAIR = 28 * 36 + 18;
 	public static final int SPEED = 1033;
 	
 	public static final int[] NOTE_CHANNELS = {P1_KEY_BASE, P2_KEY_BASE ,P1_INVISIBLE_KEY_BASE, P2_INVISIBLE_KEY_BASE, 
@@ -56,9 +62,17 @@ public class Section {
 	private final List<DecodeLog> log;
 	
 	private List<String> channellines;
+	private final boolean legacyFreeZoneEnabled;
 
 	public Section(BMSModel model, Section prev, List<String> lines, Map<Integer, Double> bpmtable,
 			Map<Integer, Double> stoptable, Map<Integer, Double> scrolltable, Map<Integer, Double> speedtable, List<DecodeLog> log) {
+		this(model, prev, lines, bpmtable, stoptable, scrolltable, speedtable, log, false);
+	}
+
+	public Section(BMSModel model, Section prev, List<String> lines, Map<Integer, Double> bpmtable,
+			Map<Integer, Double> stoptable, Map<Integer, Double> scrolltable, Map<Integer, Double> speedtable, List<DecodeLog> log,
+			boolean legacyFreeZoneEnabled) {
+		this.legacyFreeZoneEnabled = legacyFreeZoneEnabled;
 		this.model = model;
 		this.log = log;
 		final int base = model.getBase();
@@ -79,6 +93,10 @@ public class Section {
 			case LANE_AUTOPLAY:
 				// BGAレーン
 			case BGA_PLAY:
+			case P1_FREEZONE_SINGLE:
+			case P1_FREEZONE_PAIR:
+			case P2_FREEZONE_SINGLE:
+			case P2_FREEZONE_PAIR:
 			// レイヤー
 			case LAYER_PLAY:
 				channellines.add(line);
@@ -189,7 +207,9 @@ public class Section {
 				}
 			}
 			// 5/7KEY -> 10/14KEY			
-			if(basech == P2_KEY_BASE || basech == P2_INVISIBLE_KEY_BASE || basech == P2_LONG_KEY_BASE || basech ==P2_MINE_KEY_BASE) {
+			if (((basech == P2_KEY_BASE || basech == P2_INVISIBLE_KEY_BASE || basech == P2_LONG_KEY_BASE || basech == P2_MINE_KEY_BASE)
+					&& (channel != P2_FREEZONE_LEGACY || legacyFreeZoneEnabled))
+					|| channel == P2_FREEZONE_SINGLE || channel == P2_FREEZONE_PAIR) {
 				final Mode mode = (model.getMode() == Mode.BEAT_5K) ? Mode.BEAT_10K : (model.getMode() == Mode.BEAT_7K ? Mode.BEAT_14K : null);
 				if(mode != null) {
 					this.processData(line, (pos, data) -> {
@@ -313,7 +333,7 @@ public class Section {
 	
 	private static final int[] CHANNELASSIGN_BEAT5 = { 0, 1, 2, 3, 4, 5, -1, -1, -1, 6, 7, 8, 9, 10, 11, -1, -1, -1 };
 	private static final int[] CHANNELASSIGN_BEAT7 = { 0, 1, 2, 3, 4, 7, -1, 5, 6, 8, 9, 10, 11, 12, 15, -1, 13, 14 };
-	private static final int[] CHANNELASSIGN_POPN = { 0, 1, 2, 3, 4, -1,-1,-1,-1,-1, 5, 6, 7, 8,-1,-1,-1,-1 };
+	private static final int[] CHANNELASSIGN_POPN = { 0, 1, 2, 3, 4, 7, 8, 5, 6, -1, 5, 6, 7, 8, -1, -1, -1, -1 };
 
 	private TreeMap<Double, TimeLineCache> tlcache;
 
@@ -985,6 +1005,170 @@ public class Section {
 
 	public double getRate() {
 		return rate;
+	}
+
+	public static void resolveFreeZones(Section[] sections, BMSModel model, TreeMap<Double, TimeLineCache> tlcache, List<DecodeLog> log) {
+		if (model.getMode() == Mode.POPN_9K) {
+			return;
+		}
+		final int[] cassign = (model.getMode() == Mode.BEAT_7K || model.getMode() == Mode.BEAT_14K)
+				? CHANNELASSIGN_BEAT7 : CHANNELASSIGN_BEAT5;
+		final int p1ScratchLane = cassign[5];
+		final int p2ScratchLane = (model.getMode().player == 2) ? cassign[14] : -1;
+
+		final List<double[]> p1Intervals = new ArrayList<>();
+		final List<double[]> p2Intervals = new ArrayList<>();
+		final double[] openPairStart = new double[] { -1.0, -1.0 };
+
+		for (Section sec : sections) {
+			final List<Double> p1PairPos = new ArrayList<>();
+			final List<Double> p2PairPos = new ArrayList<>();
+			for (String line : sec.channellines) {
+				final int channel = ChartDecoder.parseInt36(line.charAt(4), line.charAt(5));
+				if (channel == P1_FREEZONE_SINGLE || (sec.legacyFreeZoneEnabled && channel == P1_FREEZONE_LEGACY)) {
+					sec.processData(line, (pos, data) -> {
+						final double s = sec.sectionnum + sec.rate * pos;
+						p1Intervals.add(new double[] { s, s + 0.25 });
+					});
+				} else if (channel == P2_FREEZONE_SINGLE || (sec.legacyFreeZoneEnabled && channel == P2_FREEZONE_LEGACY)) {
+					if (p2ScratchLane >= 0) {
+						sec.processData(line, (pos, data) -> {
+							final double s = sec.sectionnum + sec.rate * pos;
+							p2Intervals.add(new double[] { s, s + 0.25 });
+						});
+					}
+				} else if (channel == P1_FREEZONE_PAIR) {
+					sec.processData(line, (pos, data) -> p1PairPos.add(pos));
+				} else if (channel == P2_FREEZONE_PAIR) {
+					if (p2ScratchLane >= 0) {
+						sec.processData(line, (pos, data) -> p2PairPos.add(pos));
+					}
+				}
+			}
+			if (!p1PairPos.isEmpty()) {
+				Collections.sort(p1PairPos);
+				for (double pos : p1PairPos) {
+					final double absSec = sec.sectionnum + sec.rate * pos;
+					if (openPairStart[0] < 0) {
+						openPairStart[0] = absSec;
+					} else {
+						if (absSec > openPairStart[0]) {
+							p1Intervals.add(new double[] { openPairStart[0], absSec });
+						}
+						openPairStart[0] = -1.0;
+					}
+				}
+			}
+			if (!p2PairPos.isEmpty()) {
+				Collections.sort(p2PairPos);
+				for (double pos : p2PairPos) {
+					final double absSec = sec.sectionnum + sec.rate * pos;
+					if (openPairStart[1] < 0) {
+						openPairStart[1] = absSec;
+					} else {
+						if (absSec > openPairStart[1]) {
+							p2Intervals.add(new double[] { openPairStart[1], absSec });
+						}
+						openPairStart[1] = -1.0;
+					}
+				}
+			}
+		}
+
+		if (openPairStart[0] >= 0) {
+			log.add(new DecodeLog(WARNING, "曲の終端までにフリーゾーン終端定義されていないフリーゾーンがあります。lane:" + (p1ScratchLane + 1)));
+		}
+		if (openPairStart[1] >= 0 && p2ScratchLane >= 0) {
+			log.add(new DecodeLog(WARNING, "曲の終端までにフリーゾーン終端定義されていないフリーゾーンがあります。lane:" + (p2ScratchLane + 1)));
+		}
+
+		applyMergedFreeZones(tlcache, model, p1ScratchLane, p1Intervals);
+		if (p2ScratchLane >= 0) {
+			applyMergedFreeZones(tlcache, model, p2ScratchLane, p2Intervals);
+		}
+	}
+
+	private static void applyMergedFreeZones(TreeMap<Double, TimeLineCache> tlcache, BMSModel model, int lane, List<double[]> intervals) {
+		if (intervals.isEmpty()) {
+			return;
+		}
+		intervals.sort((a, b) -> {
+			int cmp = Double.compare(a[0], b[0]);
+			return cmp != 0 ? cmp : Double.compare(a[1], b[1]);
+		});
+		final List<double[]> merged = new ArrayList<>();
+		double curStart = intervals.get(0)[0];
+		double curEnd = intervals.get(0)[1];
+		for (int i = 1; i < intervals.size(); i++) {
+			final double nextStart = intervals.get(i)[0];
+			final double nextEnd = intervals.get(i)[1];
+			if (nextStart <= curEnd + 1e-9) {
+				if (nextEnd > curEnd) {
+					curEnd = nextEnd;
+				}
+			} else {
+				merged.add(new double[] { curStart, curEnd });
+				curStart = nextStart;
+				curEnd = nextEnd;
+			}
+		}
+		merged.add(new double[] { curStart, curEnd });
+
+		for (double[] range : merged) {
+			final TimeLine startTl = getOrCreateTimeLine(tlcache, model, range[0]);
+			final TimeLine endTl = getOrCreateTimeLine(tlcache, model, range[1]);
+			final List<Note> innerList = new ArrayList<>();
+			for (TimeLineCache tlc : tlcache.subMap(startTl.getSection() - 1e-9, true, endTl.getSection() + 1e-9, true).values()) {
+				final Note n = tlc.timeline.getNote(lane);
+				if (n instanceof NormalNote normalNote) {
+					normalNote.setFreeZoneInner(true);
+					innerList.add(normalNote);
+				} else if (n instanceof LongNote ln) {
+					final LongNote lnStart = ln.isEnd() ? ln.getPair() : ln;
+					final LongNote lnEnd = ln.isEnd() ? ln : ln.getPair();
+					if (lnStart != null && lnEnd != null && !lnStart.isFreeZoneInner()) {
+						lnStart.setFreeZoneInner(true);
+						lnEnd.setFreeZoneInner(true);
+						innerList.add(lnStart);
+					}
+				}
+			}
+			final FreeZoneNote fzStart = new FreeZoneNote();
+			final FreeZoneNote fzEnd = new FreeZoneNote();
+			startTl.setFreeZone(lane, fzStart);
+			endTl.setFreeZone(lane, fzEnd);
+			fzStart.setPair(fzEnd);
+			fzStart.setInnerNotes(innerList.toArray(new Note[0]));
+		}
+	}
+
+	public static TimeLine getOrCreateTimeLine(TreeMap<Double, TimeLineCache> tlcache, BMSModel model, double section) {
+		final TimeLineCache exact = tlcache.get(section);
+		if (exact != null) {
+			return exact.timeline;
+		}
+		final Entry<Double, TimeLineCache> floor = tlcache.floorEntry(section);
+		if (floor != null && Math.abs(floor.getKey() - section) < 1e-9) {
+			return floor.getValue().timeline;
+		}
+		final Entry<Double, TimeLineCache> ceil = tlcache.ceilingEntry(section);
+		if (ceil != null && Math.abs(ceil.getKey() - section) < 1e-9) {
+			return ceil.getValue().timeline;
+		}
+
+		final Entry<Double, TimeLineCache> le = tlcache.lowerEntry(section);
+		final double scroll = le.getValue().timeline.getScroll();
+		final double bpm = le.getValue().timeline.getBPM();
+		final double speed = le.getValue().timeline.getSpeed();
+		final double time = le.getValue().time + le.getValue().timeline.getMicroStop()
+				+ (240000.0 * 1000 * (section - le.getKey())) / bpm;
+
+		final TimeLine tl = new TimeLine(section, (long) time, model.getMode().key);
+		tl.setBPM(bpm);
+		tl.setScroll(scroll);
+		tl.setSpeed(speed);
+		tlcache.put(section, new TimeLineCache(time, tl));
+		return tl;
 	}
 
 	public TimeLine getOrCreateTimeLine(double section) {

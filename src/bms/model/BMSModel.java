@@ -296,7 +296,7 @@ public class BMSModel implements Comparable<BMSModel> {
 		for (int i = timelines.length - 1;i >= 0;i--) {
 			final TimeLine tl = timelines[i];
 			for (int lane = 0; lane < keys; lane++) {
-				if (tl.existNote(lane) || tl.getHiddenNote(lane) != null
+				if (tl.existNote(lane) || tl.existFreeZone(lane) || tl.getHiddenNote(lane) != null
 						|| tl.getBackGroundNotes().length > 0 || tl.getBGA() != -1
 						|| tl.getLayer() != -1) {
 					return tl.getMilliTime();
@@ -315,7 +315,7 @@ public class BMSModel implements Comparable<BMSModel> {
 		for (int i = timelines.length - 1;i >= 0;i--) {
 			final TimeLine tl = timelines[i];
 			for (int lane = 0; lane < keys; lane++) {
-				if (tl.existNote(lane)) {
+				if (tl.existNote(lane) || tl.existFreeZone(lane)) {
 					return tl.getMilliTime();
 				}
 			}
@@ -485,6 +485,18 @@ public class BMSModel implements Comparable<BMSModel> {
 		return false;
 	}
 
+	public boolean containsFreeZone() {
+		final int keys = mode.key;
+		for (TimeLine tl : timelines) {
+			for (int i = 0; i < keys; i++) {
+				if (tl.existFreeZone(i)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	public String getPreview() {
 		return preview;
 	}
@@ -585,6 +597,12 @@ public class BMSModel implements Comparable<BMSModel> {
 			tlsb.append("[");
 			for(int lane = 0;lane < mode.key;lane++) {
 				Note n = tl.getNote(lane);
+				FreeZoneNote fz = tl.getFreeZone(lane);
+				boolean hasFzStart = fz != null && !fz.isEnd();
+				if(hasFzStart) {
+					tlsb.append("F" + fz.getMilliDuration());
+					write = true;
+				}
 				if(n instanceof NormalNote) {
 					tlsb.append("1");
 					write = true;
@@ -599,7 +617,9 @@ public class BMSModel implements Comparable<BMSModel> {
 					tlsb.append("m" + ((MineNote)n).getDamage());
 					write = true;					
 				} else {
-					tlsb.append("0");						
+					if (!hasFzStart) {
+						tlsb.append("0");
+					}
 				}
 				if(lane < mode.key - 1) {
 					tlsb.append(",");					
@@ -663,6 +683,11 @@ public class BMSModel implements Comparable<BMSModel> {
 	 */
 	private boolean conditionalContainsMineNote;
 
+	/**
+	 * 動的条件分岐の枝内にフリーゾーンが含まれるかどうか
+	 */
+	private boolean conditionalContainsFreeZone;
+
 	public boolean hasConditional() {
 		return conditionalBlocks != null && conditionalBlocks.length > 0;
 	}
@@ -705,6 +730,14 @@ public class BMSModel implements Comparable<BMSModel> {
 
 	public void setConditionalContainsMineNote(boolean conditionalContainsMineNote) {
 		this.conditionalContainsMineNote = conditionalContainsMineNote;
+	}
+
+	public boolean isConditionalContainsFreeZone() {
+		return conditionalContainsFreeZone;
+	}
+
+	public void setConditionalContainsFreeZone(boolean conditionalContainsFreeZone) {
+		this.conditionalContainsFreeZone = conditionalContainsFreeZone;
 	}
 
 	public int getBase() {
