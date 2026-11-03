@@ -52,6 +52,7 @@ public class Section {
 	public static final int P2_FREEZONE_SINGLE = 28 * 36 + 17;
 	public static final int P2_FREEZONE_PAIR = 28 * 36 + 18;
 	public static final int SPEED = 1033;
+	public static final int SECTION_LINE = 28 * 36 + 29;
 	
 	public static final int[] NOTE_CHANNELS = {P1_KEY_BASE, P2_KEY_BASE ,P1_INVISIBLE_KEY_BASE, P2_INVISIBLE_KEY_BASE, 
 			P1_LONG_KEY_BASE, P2_LONG_KEY_BASE, P1_MINE_KEY_BASE, P2_MINE_KEY_BASE, P1_POTION_KEY_BASE, P2_POTION_KEY_BASE,
@@ -109,6 +110,7 @@ public class Section {
 			case P1_FREEZONE_PAIR:
 			case P2_FREEZONE_SINGLE:
 			case P2_FREEZONE_PAIR:
+			case SECTION_LINE:
 			// レイヤー
 			case LAYER_PLAY:
 				channellines.add(line);
@@ -627,6 +629,11 @@ public class Section {
 			case P1_DUMMY_POTION_KEY_BASE:
 				this.processData(line, (pos, data) -> recordDummyPotionNote(posEvents, numKeys, key, pos, data));
 				break;
+			case SECTION_LINE:
+				this.processData(line, (pos, data) -> {
+					getTimeLine(sectionnum + rate * pos).setSectionLine(true);
+				});
+				break;
 			case P1_POTION_KEY_BASE:
 				this.processData(line, (pos, data) -> recordPotionNote(posEvents, numKeys, key, pos, data));
 				break;
@@ -832,6 +839,11 @@ public class Section {
 				break;
 			case P1_DUMMY_POTION_KEY_BASE:
 				this.processData(line, (pos, data) -> recordDummyPotionNote(posEvents, numKeys, key, pos, data));
+				break;
+			case SECTION_LINE:
+				this.processData(line, (pos, data) -> {
+					getTimeLine(sectionnum + rate * pos).setSectionLine(true);
+				});
 				break;
 			case P1_POTION_KEY_BASE:
 				this.processData(line, (pos, data) -> recordPotionNote(posEvents, numKeys, key, pos, data));
