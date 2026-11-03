@@ -851,7 +851,7 @@ public class BMSDecoder extends ChartDecoder {
 					}
 				}
 				if (((basech == Section.P2_KEY_BASE || basech == Section.P2_INVISIBLE_KEY_BASE
-						|| basech == Section.P2_LONG_KEY_BASE || basech == Section.P2_MINE_KEY_BASE)
+						|| basech == Section.P2_LONG_KEY_BASE || basech == Section.P2_MINE_KEY_BASE || basech == Section.P2_POTION_KEY_BASE)
 						&& (channel != Section.P2_FREEZONE_LEGACY || legacyFreeZoneEnabled))
 						|| (model.getMode() != Mode.POPN_9K && (channel == Section.P2_FREEZONE_SINGLE || channel == Section.P2_FREEZONE_PAIR))) {
 					final Mode nextMode = (model.getMode() == Mode.BEAT_5K) ? Mode.BEAT_10K

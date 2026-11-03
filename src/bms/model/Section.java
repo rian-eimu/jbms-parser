@@ -33,6 +33,8 @@ public class Section {
 	public static final int P2_LONG_KEY_BASE = 6 * 36 + 1;
 	public static final int P1_MINE_KEY_BASE = 13 * 36 + 1;
 	public static final int P2_MINE_KEY_BASE = 14 * 36 + 1;
+	public static final int P1_POTION_KEY_BASE = 15 * 36 + 1;
+	public static final int P2_POTION_KEY_BASE = 16 * 36 + 1;
 
 	public static final int SCROLL = 1020;
 	public static final int P1_FREEZONE_LEGACY = 1 * 36 + 7;
@@ -44,7 +46,7 @@ public class Section {
 	public static final int SPEED = 1033;
 	
 	public static final int[] NOTE_CHANNELS = {P1_KEY_BASE, P2_KEY_BASE ,P1_INVISIBLE_KEY_BASE, P2_INVISIBLE_KEY_BASE, 
-			P1_LONG_KEY_BASE, P2_LONG_KEY_BASE, P1_MINE_KEY_BASE, P2_MINE_KEY_BASE};
+			P1_LONG_KEY_BASE, P2_LONG_KEY_BASE, P1_MINE_KEY_BASE, P2_MINE_KEY_BASE, P1_POTION_KEY_BASE, P2_POTION_KEY_BASE};
 
 	/**
 	 * 小節の拡大倍率
@@ -207,7 +209,7 @@ public class Section {
 				}
 			}
 			// 5/7KEY -> 10/14KEY			
-			if (((basech == P2_KEY_BASE || basech == P2_INVISIBLE_KEY_BASE || basech == P2_LONG_KEY_BASE || basech == P2_MINE_KEY_BASE)
+			if (((basech == P2_KEY_BASE || basech == P2_INVISIBLE_KEY_BASE || basech == P2_LONG_KEY_BASE || basech == P2_MINE_KEY_BASE || basech == P2_POTION_KEY_BASE)
 					&& (channel != P2_FREEZONE_LEGACY || legacyFreeZoneEnabled))
 					|| channel == P2_FREEZONE_SINGLE || channel == P2_FREEZONE_PAIR) {
 				final Mode mode = (model.getMode() == Mode.BEAT_5K) ? Mode.BEAT_10K : (model.getMode() == Mode.BEAT_7K ? Mode.BEAT_14K : null);
@@ -320,6 +322,7 @@ public class Section {
 		final List<Integer> longNotes = new ArrayList<Integer>(2);
 		final List<Integer> keyNotes = new ArrayList<Integer>(2);
 		final List<Integer> mineNotes = new ArrayList<Integer>(1);
+		final List<Integer> potionNotes = new ArrayList<Integer>(1);
 	}
 
 	interface DataProcessor {
@@ -593,6 +596,9 @@ public class Section {
 					}
 				});
 				break;				
+			case P1_POTION_KEY_BASE:
+				this.processData(line, (pos, data) -> recordPotionNote(posEvents, numKeys, key, pos, data));
+				break;
 			case P1_MINE_KEY_BASE:
 				this.processData(line, (pos, data) -> recordMineNote(posEvents, numKeys, key, pos, data));
 				if (posEvents != null) break;
@@ -666,6 +672,14 @@ public class Section {
 		arr[key].mineNotes.add(data);
 	}
 
+	private static void recordPotionNote(TreeMap<Double, LanePosEvents[]> posEvents, int numKeys, int key, double pos, int data) {
+		LanePosEvents[] arr = posEvents.computeIfAbsent(pos, k -> new LanePosEvents[numKeys]);
+		if (arr[key] == null) {
+			arr[key] = new LanePosEvents();
+		}
+		arr[key].potionNotes.add(data);
+	}
+
 	private void processChannelLines(int[] cassign, int[] wavmap, int[] bgamap, List<LongNote>[] lnlist, LongNote[] startln,
 			int lnobj, int cnobj, int hcnobj, int hlnobj, int lnmode, int base) {
 		final int numKeys = model.getMode().key;
@@ -694,6 +708,12 @@ public class Section {
 			} else if (channel >= P1_MINE_KEY_BASE && channel < P1_MINE_KEY_BASE + 9) {
 				tmpkey = cassign[channel - P1_MINE_KEY_BASE];
 				channel = P1_MINE_KEY_BASE;
+			} else if (channel >= P1_POTION_KEY_BASE && channel < P1_POTION_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P1_POTION_KEY_BASE];
+				channel = P1_POTION_KEY_BASE;
+			} else if (channel >= P2_POTION_KEY_BASE && channel < P2_POTION_KEY_BASE + 9) {
+				tmpkey = cassign[channel - P2_POTION_KEY_BASE + 9];
+				channel = P1_POTION_KEY_BASE;
 			} else if (channel >= P2_MINE_KEY_BASE && channel < P2_MINE_KEY_BASE + 9) {
 				tmpkey = cassign[channel - P2_MINE_KEY_BASE + 9];
 				channel = P1_MINE_KEY_BASE;
@@ -713,6 +733,9 @@ public class Section {
 				break;
 			case P1_LONG_KEY_BASE:
 				this.processData(line, (pos, data) -> recordLongNote(posEvents, numKeys, key, pos, data));
+				break;
+			case P1_POTION_KEY_BASE:
+				this.processData(line, (pos, data) -> recordPotionNote(posEvents, numKeys, key, pos, data));
 				break;
 			case P1_MINE_KEY_BASE:
 				this.processData(line, (pos, data) -> recordMineNote(posEvents, numKeys, key, pos, data));
@@ -957,16 +980,23 @@ public class Section {
 					}
 				}
 
-				// 3. 地雷ノーツ (Dx/Ex) を処理する
-				for (int rawData : ev.mineNotes) {
+
+				// 3. 地雷ノーツ (Dx/Ex) および 4. ポーションノーツ (Fx/Gx) を処理する
+				for (int noteType = 0; noteType < 2; noteType++)
+				for (int rawData : (noteType == 0 ? ev.mineNotes : ev.potionNotes)) {
 					int data = rawData;
 					final TimeLine tl = getTimeLine(sectionnum + rate * pos);
 					boolean insideln = tl.existNote(key) || isInsideExistingLongNote(lnlist[key], tl.getSection());
+					if (insideln && noteType == 1) {
+						log.add(new DecodeLog(WARNING, "ポーションノート追加時に衝突が発生しました : " + (key + 1) + ":"
+								+ tl.getTime()));
+						continue;
+					}
 					if (!insideln) {
 						if (base == 62) {
 							data = ChartDecoder.parseInt36(ChartDecoder.toBase62(data), 0);
 						}
-						tl.setNote(key, new MineNote(wavmap[0], data));
+						tl.setNote(key, noteType == 0 ? new MineNote(wavmap[0], data) : new PotionNote(-1, data));
 					} else {
 						log.add(new DecodeLog(WARNING, "地雷ノート追加時に衝突が発生しました : " + (key + 1) + ":"
 								+ tl.getTime()));
