@@ -688,6 +688,11 @@ public class BMSModel implements Comparable<BMSModel> {
 	 */
 	private boolean conditionalContainsFreeZone;
 
+	/**
+	 * 動的条件分岐の全枝で事前ロード対象となるノーツ一覧（スライス範囲情報を含む）
+	 */
+	private Note[] conditionalPreloadNotes = new Note[0];
+
 	public boolean hasConditional() {
 		return conditionalBlocks != null && conditionalBlocks.length > 0;
 	}
@@ -738,6 +743,14 @@ public class BMSModel implements Comparable<BMSModel> {
 
 	public void setConditionalContainsFreeZone(boolean conditionalContainsFreeZone) {
 		this.conditionalContainsFreeZone = conditionalContainsFreeZone;
+	}
+
+	public Note[] getConditionalPreloadNotes() {
+		return conditionalPreloadNotes;
+	}
+
+	public void setConditionalPreloadNotes(Note[] conditionalPreloadNotes) {
+		this.conditionalPreloadNotes = conditionalPreloadNotes != null ? conditionalPreloadNotes : new Note[0];
 	}
 
 	public int getBase() {

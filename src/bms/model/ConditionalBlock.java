@@ -188,6 +188,11 @@ public class ConditionalBlock {
 	}
 
 	public int getDefaultBranchIndex() {
+		for (int i = 0; i < branches.size(); i++) {
+			if (branches.get(i).isDefault()) {
+				return i;
+			}
+		}
 		return branches.size() - 1;
 	}
 
@@ -236,6 +241,20 @@ public class ConditionalBlock {
 		private final Mode resolvedMode;
 		private final int maxBarIndex;
 		private final boolean legacyFreeZoneEnabled;
+
+		protected ChartBuilder(ConditionalBlock[] blocks, Mode resolvedMode) {
+			this.entries = Collections.emptyList();
+			this.blocks = blocks.clone();
+			this.bpmtable = Collections.emptyMap();
+			this.stoptable = Collections.emptyMap();
+			this.scrolltable = Collections.emptyMap();
+			this.speedtable = Collections.emptyMap();
+			this.wm = new int[0];
+			this.bm = new int[0];
+			this.resolvedMode = resolvedMode;
+			this.maxBarIndex = 0;
+			this.legacyFreeZoneEnabled = false;
+		}
 
 		public ChartBuilder(List<ChannelLineEntry> entries, ConditionalBlock[] blocks,
 				Map<Integer, Double> bpmtable, Map<Integer, Double> stoptable,
@@ -422,6 +441,7 @@ public class ConditionalBlock {
 			branched.setConditionalWavIds(baseModel.getConditionalWavIds());
 			branched.setConditionalContainsMineNote(baseModel.isConditionalContainsMineNote());
 			branched.setConditionalContainsFreeZone(baseModel.isConditionalContainsFreeZone());
+			branched.setConditionalPreloadNotes(baseModel.getConditionalPreloadNotes());
 
 			List<DecodeLog> dummyLog = new ArrayList<>();
 			buildTimeLines(branched, selectedBranches, dummyLog);
