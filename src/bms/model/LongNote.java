@@ -36,6 +36,10 @@ public class LongNote extends Note {
 	 * ロングノートの種類:ヘルチャージノート
 	 */
 	public static final int TYPE_HELLCHARGENOTE = 3;
+	/**
+	 * ロングノートの種類:ヘルロングノート
+	 */
+	public static final int TYPE_HELLLONGNOTE = 4;
 	
 	/**
 	 * 指定のTimeLineを始点としたロングノートを作成する

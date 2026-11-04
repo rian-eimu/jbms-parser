@@ -90,18 +90,18 @@ public class BMSModelUtils {
 					break;
 				case TOTALNOTES_KEY:
 					for (int lane : nlane) {
-						if (tl.existNote(lane) && (tl.getNote(lane) instanceof NormalNote)) {
+						if (tl.existNote(lane) && (tl.getNote(lane) instanceof NormalNote) && !tl.getNote(lane).isDummy() && !((NormalNote) tl.getNote(lane)).isFreeZoneInner()) {
 							count++;
 						}
 					}
 					break;
 				case TOTALNOTES_LONG_KEY:
 					for (int lane : nlane) {
-						if (tl.existNote(lane) && (tl.getNote(lane) instanceof LongNote)) {
+						if (tl.existNote(lane) && (tl.getNote(lane) instanceof LongNote) && !tl.getNote(lane).isDummy() && !tl.getNote(lane).isFreeZoneInner()) {
 							LongNote ln = (LongNote) tl.getNote(lane);
 							if (ln.getType() == LongNote.TYPE_CHARGENOTE
 									|| ln.getType() == LongNote.TYPE_HELLCHARGENOTE
-									|| (ln.getType() == LongNote.TYPE_UNDEFINED && model.getLntype() != BMSModel.LNTYPE_LONGNOTE)
+									|| (ln.getType() == LongNote.TYPE_UNDEFINED && model.getLntype() != BMSModel.LNTYPE_LONGNOTE && model.getLntype() != BMSModel.LNTYPE_HELLLONGNOTE)
 									|| !ln.isEnd()) {
 								count++;
 							}
@@ -110,7 +110,12 @@ public class BMSModelUtils {
 					break;
 				case TOTALNOTES_SCRATCH:
 					for (int lane : slane) {
-						if (tl.existNote(lane) && (tl.getNote(lane) instanceof NormalNote)) {
+						if (tl.existFreeZone(lane) && !tl.getFreeZone(lane).isEnd()) {
+							count++;
+						}
+					}
+					for (int lane : slane) {
+						if (tl.existNote(lane) && (tl.getNote(lane) instanceof NormalNote) && !tl.getNote(lane).isDummy() && !((NormalNote) tl.getNote(lane)).isFreeZoneInner()) {
 							count++;
 						}
 					}
@@ -118,11 +123,11 @@ public class BMSModelUtils {
 				case TOTALNOTES_LONG_SCRATCH:
 					for (int lane : slane) {
 						final Note n = tl.getNote(lane);
-						if (n instanceof LongNote) {
+						if (n instanceof LongNote && !n.isDummy() && !n.isFreeZoneInner()) {
 							final LongNote ln = (LongNote) n;
 							if (ln.getType() == LongNote.TYPE_CHARGENOTE
 									|| ln.getType() == LongNote.TYPE_HELLCHARGENOTE
-									|| (ln.getType() == LongNote.TYPE_UNDEFINED && model.getLntype() != BMSModel.LNTYPE_LONGNOTE)
+									|| (ln.getType() == LongNote.TYPE_UNDEFINED && model.getLntype() != BMSModel.LNTYPE_LONGNOTE && model.getLntype() != BMSModel.LNTYPE_HELLLONGNOTE)
 									|| !ln.isEnd()) {
 								count++;
 							}
@@ -131,12 +136,12 @@ public class BMSModelUtils {
 					break;
 				case TOTALNOTES_MINE:
 					for (int lane : nlane) {
-						if (tl.existNote(lane) && (tl.getNote(lane) instanceof MineNote)) {
+						if (tl.existNote(lane) && (tl.getNote(lane) instanceof MineNote) && !tl.getNote(lane).isDummy()) {
 							count++;
 						}
 					}
 					for (int lane : slane) {
-						if (tl.existNote(lane) && (tl.getNote(lane) instanceof MineNote)) {
+						if (tl.existNote(lane) && (tl.getNote(lane) instanceof MineNote) && !tl.getNote(lane).isDummy()) {
 							count++;
 						}
 					}
@@ -173,13 +178,37 @@ public class BMSModelUtils {
 		return maxnotes;
 	}
 	
+	public static void applyStartNoteTimeMargin(BMSModel model, long marginTime) {
+		if (marginTime > 0 && model.getAllTimeLines().length > 0) {
+			double marginSection = marginTime * model.getAllTimeLines()[0].getBPM() / 240000;
+			for (TimeLine tl : model.getAllTimeLines()) {
+				tl.setSection(tl.getSection() + marginSection);
+				tl.setMicroTime(tl.getMicroTime() + marginTime * 1000);
+			}
+
+			TimeLine[] tl2 = new TimeLine[model.getAllTimeLines().length + 1];
+			TimeLine first = model.getAllTimeLines()[0];
+			tl2[0] = new TimeLine(0, 0, model.getMode().key);
+			tl2[0].setBPM(model.getBpm());
+			if (first.hasSpeedObj()) {
+				tl2[0].setSpeedObj(first.getSpeed());
+			} else {
+				tl2[0].setSpeed(first.getSpeed());
+			}
+			for (int i = 1; i < tl2.length; i++) {
+				tl2[i] = model.getAllTimeLines()[i - 1];
+			}
+			model.setAllTimeLine(tl2);
+		}
+	}
+
 	public static long setStartNoteTime(BMSModel model, long starttime) {
 		long marginTime = 0;
 		for (TimeLine tl : model.getAllTimeLines()) {
 			if(tl.getMilliTime() >= starttime) {
 				break;
 			}
-			if(tl.existNote()) {
+			if(tl.existNote() || tl.existFreeZone()) {
 				marginTime = starttime - tl.getMilliTime();
 				break;
 			}

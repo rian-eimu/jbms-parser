@@ -11,10 +11,21 @@ public final class ByteArrayChartSource implements ChartSource {
 
 	private final String location;
 	private final byte[] data;
+	private final long lastModifiedTimeMillis;
 
 	public ByteArrayChartSource(String location, byte[] data) {
+		this(location, data, -1L);
+	}
+
+	public ByteArrayChartSource(String location, byte[] data, long lastModifiedTimeMillis) {
 		this.location = location;
 		this.data = Objects.requireNonNull(data, "data").clone();
+		this.lastModifiedTimeMillis = lastModifiedTimeMillis;
+	}
+
+	@Override
+	public long lastModifiedTimeMillis() {
+		return lastModifiedTimeMillis;
 	}
 
 	@Override

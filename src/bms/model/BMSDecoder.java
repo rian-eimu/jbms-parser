@@ -83,6 +83,10 @@ public class BMSDecoder extends ChartDecoder {
 	
 	private static final CommandWord[] commandWords = CommandWord.values();
 
+	public static final long LEGACY_FREEZONE_CUTOFF_MILLIS = java.time.ZonedDateTime
+			.of(2000, 12, 31, 23, 59, 59, 999_000_000, java.time.ZoneId.systemDefault())
+			.toInstant().toEpochMilli();
+
 	/**
 	 * 指定したBMSファイルをモデルにデコードする
 	 *
@@ -105,6 +109,9 @@ public class BMSDecoder extends ChartDecoder {
 
 	private BMSModel decode(ChartSource source, byte[] data, boolean ispms, int[] selectedRandom) {
 		final String path = source != null ? source.location() : null;
+		final boolean legacyFreeZoneEnabled = !ispms && source != null
+				&& source.lastModifiedTimeMillis() > 0
+				&& source.lastModifiedTimeMillis() <= LEGACY_FREEZONE_CUTOFF_MILLIS;
 		log.clear();
 		final long time = System.currentTimeMillis();
 		BMSModel model = new BMSModel();
@@ -147,6 +154,9 @@ public class BMSDecoder extends ChartDecoder {
 			crandom.clear();
 
 			skip.clear();
+			final List<ConditionalBlock> conditionalBlocks = new ArrayList<ConditionalBlock>();
+			final List<ConditionalBlock.ChannelLineEntry> channelEntries = new ArrayList<ConditionalBlock.ChannelLineEntry>();
+			ConditionalParseState condState = null;
 			while ((line = br.readLine()) != null) {
 				if (line.length() < 2) {
 					continue;
@@ -192,6 +202,26 @@ public class BMSDecoder extends ChartDecoder {
 							log.add(new DecodeLog(WARNING, "ENDRANDOMに対応するRANDOMが存在しません: " + line));
 						}
 					} else if (skip.isEmpty() || !skip.getLast()) {
+						if (matchesConditionalKeyword(line, "CONDITIONAL")) {
+							condState = handleConditionalStart(line, condState, conditionalBlocks.size());
+							continue;
+						} else if (matchesConditionalKeyword(line, "WHEN")) {
+							handleConditionalWhen(line, condState, false);
+							continue;
+						} else if (matchesConditionalKeyword(line, "ELSEWHEN")) {
+							handleConditionalWhen(line, condState, true);
+							continue;
+						} else if (matchesConditionalKeyword(line, "DEFAULT")) {
+							handleConditionalDefault(line, condState);
+							continue;
+						} else if (matchesConditionalKeyword(line, "ENDCONDITIONAL")) {
+							maxsec = handleConditionalEnd(line, condState, conditionalBlocks, channelEntries, lines, maxsec);
+							condState = null;
+							continue;
+						} else if (condState != null) {
+							handleLineInsideConditional(line, condState);
+							continue;
+						}
 						final char c = line.charAt(1);
 						final int base = model.getBase();
 						if ('0' <= c && c <= '9' && line.length() > 6) {
@@ -207,6 +237,7 @@ public class BMSDecoder extends ChartDecoder {
 								}
 								l.add(line);
 								maxsec = (maxsec > bar_index) ? maxsec : bar_index;
+								channelEntries.add(new ConditionalBlock.ChannelLineEntry(-1, -1, bar_index, line));
 							} else {
 								log.add(new DecodeLog(WARNING, "小節に数字が定義されていません : " + line));
 							}
@@ -325,8 +356,11 @@ public class BMSDecoder extends ChartDecoder {
 							}
 						} else {
 							for (CommandWord cw : commandWords) {
-								if (line.length() > cw.name().length() + 2 && matchesReserveWord(line, cw.name())) {
-									DecodeLog log = cw.function.apply(model, line.substring(cw.name().length() + 2).trim());
+								if (matchesReserveWord(line, cw.name()) && (line.length() > cw.name().length() + 2
+										|| ((cw == CommandWord.LNOBJ || cw == CommandWord.CNOBJ || cw == CommandWord.HCNOBJ || cw == CommandWord.HLNOBJ)
+												&& (line.length() == cw.name().length() + 1 || Character.isWhitespace(line.charAt(cw.name().length() + 1)))))) {
+									final String rawArg = line.length() > cw.name().length() + 2 ? line.substring(cw.name().length() + 2).trim() : "";
+									DecodeLog log = cw.function.apply(model, rawArg);
 									if (log != null) {
 										this.log.add(log);
 										Logger.getGlobal().warning(model.getTitle() + " - " + log.getMessage() + " : " + line);
@@ -349,6 +383,9 @@ public class BMSDecoder extends ChartDecoder {
 				}
 			}
 			
+			if (condState != null) {
+				log.add(new DecodeLog(ERROR, "#CONDITIONALに対応する#ENDCONDITIONALが存在しません"));
+			}
 			model.setWavList(wavlist.toArray(new String[wavlist.size()]));
 			model.setBgaList(bgalist.toArray(new String[bgalist.size()]));
 
@@ -356,13 +393,14 @@ public class BMSDecoder extends ChartDecoder {
 			Section[] sections = new Section[maxsec + 1];
 			for (int i = 0; i <= maxsec; i++) {
 				sections[i] = new Section(model, prev, lines[i] != null ? lines[i] : Collections.EMPTY_LIST, bpmtable,
-						stoptable, scrolltable, speedtable, log);
+						stoptable, scrolltable, speedtable, log, legacyFreeZoneEnabled);
 				prev = sections[i];
 			}
 
 			final TreeMap<Double, TimeLineCache> timelines = new TreeMap<Double, TimeLineCache>();
 			final List<LongNote>[] lnlist = new List[model.getMode().key];
 			LongNote[] lnendstatus = new LongNote[model.getMode().key];
+			LongNote[] dummylnendstatus = new LongNote[model.getMode().key];
 			final TimeLine basetl = new TimeLine(0, 0, model.getMode().key);
 			basetl.setBPM(model.getBpm());
 			if (bm[0] != -2) {
@@ -375,10 +413,11 @@ public class BMSDecoder extends ChartDecoder {
 			}
 			timelines.put(0.0, new TimeLineCache(0.0, basetl));
 			for (Section section : sections) {
-				section.makeTimeLines(wm, bm, timelines, lnlist, lnendstatus);
+				section.makeTimeLines(wm, bm, timelines, lnlist, lnendstatus, dummylnendstatus);
 			}
 			// Logger.getGlobal().info(
 			// "Section生成時間(ms) :" + (System.currentTimeMillis() - time));
+			Section.resolveFreeZones(sections, model, timelines, log);
 			TimeLine[] tl = new TimeLine[timelines.size()];
 			int tlcount = 0;
 			for(TimeLineCache tlc : timelines.values()) {
@@ -393,12 +432,30 @@ public class BMSDecoder extends ChartDecoder {
 				return null;
 			}
 
+			for (int i = 0; i < dummylnendstatus.length; i++) {
+				if (dummylnendstatus[i] != null) {
+					log.add(new DecodeLog(WARNING, "曲の終端までにダミーLN終端定義されていないダミーLNがあります。lane:" + (i + 1)));
+					if (dummylnendstatus[i].getSection() != Double.MIN_VALUE) {
+						timelines.get(dummylnendstatus[i].getSection()).timeline.setNote(i, null);
+					}
+				}
+			}
 			for (int i = 0; i < lnendstatus.length; i++) {
 				if (lnendstatus[i] != null) {
 					log.add(new DecodeLog(WARNING, "曲の終端までにLN終端定義されていないLNがあります。lane:" + (i + 1)));
 					if(lnendstatus[i].getSection() != Double.MIN_VALUE) {
 						timelines.get(lnendstatus[i].getSection()).timeline.setNote(i,  null);
 					}
+				}
+			}
+
+			if (!conditionalBlocks.isEmpty()) {
+				prepareConditionalModel(model, conditionalBlocks, channelEntries, bpmtable, stoptable, scrolltable, speedtable, wm, bm, maxsec, legacyFreeZoneEnabled);
+				tl = model.getAllTimeLines();
+				if (tl.length == 0 || tl[0].getBPM() == 0) {
+					log.add(new DecodeLog(ERROR, "開始BPMが定義されていないため、BMS解析に失敗しました"));
+					Logger.getGlobal().severe(path + ":BMSファイル解析失敗: 開始BPMが定義されていません");
+					return null;
 				}
 			}
 
@@ -446,6 +503,394 @@ public class BMSDecoder extends ChartDecoder {
 			e.printStackTrace();
 		}
 		return null;
+	}
+
+	private boolean matchesConditionalKeyword(String line, String keyword) {
+		if (!matchesReserveWord(line, keyword)) {
+			return false;
+		}
+		final int nextIdx = keyword.length() + 1;
+		return line.length() == nextIdx || Character.isWhitespace(line.charAt(nextIdx));
+	}
+
+	private static class ConditionalParseState {
+		final int blockIndex;
+		final int evalBar;
+		final double evalFraction;
+		final boolean invalid;
+		final List<ConditionalBlock.Branch> branches = new ArrayList<ConditionalBlock.Branch>();
+		final List<ConditionalBlock.ChannelLineEntry> pendingEntries = new ArrayList<ConditionalBlock.ChannelLineEntry>();
+		boolean hasDefault = false;
+		int currentBranchIndex = -1;
+		boolean skipCurrentBranch = false;
+
+		ConditionalParseState(int blockIndex, int evalBar, double evalFraction, boolean invalid) {
+			this.blockIndex = blockIndex;
+			this.evalBar = evalBar;
+			this.evalFraction = evalFraction;
+			this.invalid = invalid;
+		}
+	}
+
+	private ConditionalParseState handleConditionalStart(String line, ConditionalParseState current, int nextBlockIndex) {
+		if (current != null) {
+			log.add(new DecodeLog(ERROR, "#CONDITIONALの入れ子はサポートされていません : " + line));
+			return new ConditionalParseState(-1, 0, 0.0, true);
+		}
+		final String arg = line.length() > 12 ? line.substring(12).trim() : "";
+		if (arg.isEmpty()) {
+			log.add(new DecodeLog(ERROR, "#CONDITIONALの評価位置が定義されていません : " + line));
+			return new ConditionalParseState(-1, 0, 0.0, true);
+		}
+		try {
+			final double evalPos = Double.parseDouble(arg);
+			if (Double.isNaN(evalPos) || Double.isInfinite(evalPos) || evalPos < 0.0 || evalPos >= 1000.0) {
+				log.add(new DecodeLog(ERROR, "#CONDITIONALの評価位置が範囲外です : " + line));
+				return new ConditionalParseState(-1, 0, 0.0, true);
+			}
+			int evalBar = (int) Math.floor(evalPos);
+			double evalFraction = evalPos - evalBar;
+			if (evalFraction < 1e-9) {
+				evalFraction = 0.0;
+			} else if (evalFraction >= 1.0 - 1e-9) {
+				evalBar++;
+				evalFraction = 0.0;
+			}
+			if (evalBar >= 1000) {
+				log.add(new DecodeLog(ERROR, "#CONDITIONALの評価位置が範囲外です : " + line));
+				return new ConditionalParseState(-1, 0, 0.0, true);
+			}
+			return new ConditionalParseState(nextBlockIndex, evalBar, evalFraction, false);
+		} catch (NumberFormatException e) {
+			log.add(new DecodeLog(ERROR, "#CONDITIONALの評価位置が不正です : " + line));
+			return new ConditionalParseState(-1, 0, 0.0, true);
+		}
+	}
+
+	private void handleConditionalWhen(String line, ConditionalParseState state, boolean isElseWhen) {
+		final String cmd = isElseWhen ? "#ELSEWHEN" : "#WHEN";
+		if (state == null) {
+			log.add(new DecodeLog(ERROR, cmd + "に対応する#CONDITIONALが存在しません : " + line));
+			return;
+		}
+		if (state.invalid) {
+			return;
+		}
+		if (!isElseWhen && !state.branches.isEmpty()) {
+			log.add(new DecodeLog(ERROR, "#WHENはブロック先頭に1つのみ記述可能です : " + line));
+			state.skipCurrentBranch = true;
+			return;
+		}
+		if (isElseWhen && (state.branches.isEmpty() || state.hasDefault)) {
+			log.add(new DecodeLog(ERROR, "#ELSEWHENの位置が不正です : " + line));
+			state.skipCurrentBranch = true;
+			return;
+		}
+		final int prefixLen = isElseWhen ? 9 : 5;
+		final String expr = line.length() > prefixLen ? line.substring(prefixLen).trim() : "";
+		final ConditionalBlock.Condition cond = ConditionalBlock.Condition.parse(expr);
+		if (cond == null) {
+			log.add(new DecodeLog(ERROR, cmd + "の条件式が不正です : " + line));
+			state.skipCurrentBranch = true;
+			return;
+		}
+		state.branches.add(new ConditionalBlock.Branch(cond));
+		state.currentBranchIndex = state.branches.size() - 1;
+		state.skipCurrentBranch = false;
+	}
+
+	private void handleConditionalDefault(String line, ConditionalParseState state) {
+		if (state == null) {
+			log.add(new DecodeLog(ERROR, "#DEFAULTに対応する#CONDITIONALが存在しません : " + line));
+			return;
+		}
+		if (state.invalid) {
+			return;
+		}
+		if (state.branches.isEmpty() || state.hasDefault) {
+			log.add(new DecodeLog(ERROR, "#DEFAULTの位置が不正です : " + line));
+			state.skipCurrentBranch = true;
+			return;
+		}
+		state.branches.add(new ConditionalBlock.Branch(null));
+		state.currentBranchIndex = state.branches.size() - 1;
+		state.hasDefault = true;
+		state.skipCurrentBranch = false;
+	}
+
+	private int handleConditionalEnd(String line, ConditionalParseState state,
+			List<ConditionalBlock> conditionalBlocks,
+			List<ConditionalBlock.ChannelLineEntry> channelEntries,
+			List<String>[] barLines, int maxsec) {
+		if (state == null) {
+			log.add(new DecodeLog(ERROR, "#ENDCONDITIONALに対応する#CONDITIONALが存在しません : " + line));
+			return maxsec;
+		}
+		if (state.invalid) {
+			return maxsec;
+		}
+		if (!state.hasDefault) {
+			log.add(new DecodeLog(ERROR, "#CONDITIONALブロックに#DEFAULTが存在しません : " + line));
+			return maxsec;
+		}
+		final ConditionalBlock block = new ConditionalBlock(state.blockIndex, state.evalBar, state.evalFraction, state.branches);
+		conditionalBlocks.add(block);
+		final int defaultBranchIdx = block.getDefaultBranchIndex();
+		for (ConditionalBlock.ChannelLineEntry entry : state.pendingEntries) {
+			channelEntries.add(entry);
+			if (entry.branchIndex == defaultBranchIdx) {
+				List<String> l = barLines[entry.barIndex];
+				if (l == null) {
+					l = barLines[entry.barIndex] = new ArrayList<String>();
+				}
+				l.add(entry.line);
+			}
+			if (entry.barIndex > maxsec) {
+				maxsec = entry.barIndex;
+			}
+		}
+		if (block.getEvalBar() > maxsec) {
+			maxsec = block.getEvalBar();
+		}
+		return maxsec;
+	}
+
+	private void handleLineInsideConditional(String line, ConditionalParseState state) {
+		if (state.invalid) {
+			return;
+		}
+		final char c = line.charAt(1);
+		if ('0' <= c && c <= '9' && line.length() > 6) {
+			if (state.currentBranchIndex < 0 || state.skipCurrentBranch) {
+				return;
+			}
+			final char c2 = line.charAt(2);
+			final char c3 = line.charAt(3);
+			if ('0' <= c2 && c2 <= '9' && '0' <= c3 && c3 <= '9') {
+				final int barIndex = (c - '0') * 100 + (c2 - '0') * 10 + (c3 - '0');
+				final String sanitized = sanitizeBranchChannelLine(line, barIndex, state.evalBar, state.evalFraction);
+				if (sanitized != null) {
+					state.pendingEntries.add(new ConditionalBlock.ChannelLineEntry(
+							state.blockIndex, state.currentBranchIndex, barIndex, sanitized));
+				}
+			} else {
+				log.add(new DecodeLog(WARNING, "小節に数字が定義されていません : " + line));
+			}
+		} else {
+			log.add(new DecodeLog(WARNING, "#CONDITIONALブロック内のヘッダ定義は無視されます : " + line));
+		}
+	}
+
+	private String sanitizeBranchChannelLine(String line, int barIndex, int evalBar, double evalFraction) {
+		final int channel = ChartDecoder.parseInt36(line.charAt(4), line.charAt(5));
+		if (channel == Section.SECTION_RATE) {
+			final boolean allowed = (evalFraction == 0.0) ? (barIndex >= evalBar) : (barIndex > evalBar);
+			if (!allowed) {
+				log.add(new DecodeLog(WARNING, "#CONDITIONALの評価位置以前の小節長変更は無視されます : " + line));
+				return null;
+			}
+			return line;
+		}
+		int findex = 6;
+		final int len = line.length();
+		boolean foundSep = false;
+		while (findex < len) {
+			final char ch = line.charAt(findex);
+			if (ch == ':' || Character.isWhitespace(ch)) {
+				foundSep = true;
+				findex++;
+			} else {
+				break;
+			}
+		}
+		if (!foundSep) {
+			return line;
+		}
+		int lindex = len;
+		while (lindex > findex && Character.isWhitespace(line.charAt(lindex - 1))) {
+			lindex--;
+		}
+		final int split = (lindex - findex) / 2;
+		if (split <= 0) {
+			return null;
+		}
+		if (barIndex > evalBar) {
+			return line;
+		}
+		if (barIndex < evalBar) {
+			for (int i = 0; i < split; i++) {
+				if (line.charAt(findex + i * 2) != '0' || line.charAt(findex + i * 2 + 1) != '0') {
+					log.add(new DecodeLog(WARNING, "#CONDITIONALの評価位置より前のオブジェクト定義は無視されます : " + line));
+					break;
+				}
+			}
+			return null;
+		}
+		// barIndex == evalBar
+		if (evalFraction <= 0.0) {
+			return line;
+		}
+		boolean hasPastNonZero = false;
+		boolean hasFutureNonZero = false;
+		for (int i = 0; i < split; i++) {
+			final boolean nonZero = (line.charAt(findex + i * 2) != '0' || line.charAt(findex + i * 2 + 1) != '0');
+			if (nonZero) {
+				final double pos = (double) i / split;
+				if (pos < evalFraction - 1e-9) {
+					hasPastNonZero = true;
+				} else {
+					hasFutureNonZero = true;
+				}
+			}
+		}
+		if (!hasPastNonZero) {
+			return line;
+		}
+		log.add(new DecodeLog(WARNING, "#CONDITIONALの評価位置より前のオブジェクト定義は無視されます : " + line));
+		if (!hasFutureNonZero) {
+			return null;
+		}
+		final StringBuilder sb = new StringBuilder(line.length());
+		sb.append(line, 0, findex);
+		for (int i = 0; i < split; i++) {
+			final double pos = (double) i / split;
+			if (pos < evalFraction - 1e-9) {
+				sb.append("00");
+			} else {
+				sb.append(line.charAt(findex + i * 2));
+				sb.append(line.charAt(findex + i * 2 + 1));
+			}
+		}
+		return sb.toString();
+	}
+
+	private void prepareConditionalModel(BMSModel model,
+			List<ConditionalBlock> conditionalBlocks,
+			List<ConditionalBlock.ChannelLineEntry> channelEntries,
+			Map<Integer, Double> bpmtable, Map<Integer, Double> stoptable,
+			Map<Integer, Double> scrolltable, Map<Integer, Double> speedtable,
+			int[] wm, int[] bm, int maxsec, boolean legacyFreeZoneEnabled) {
+		final int base = model.getBase();
+		final int lnobj = model.getLnobj();
+		final int cnobj = model.getCnobj();
+		final int hcnobj = model.getHcnobj();
+		final int hlnobj = model.getHlnobj();
+		final Set<Integer> wavIdSet = new TreeSet<Integer>();
+		boolean hasMine = false;
+		boolean hasFreeZone = false;
+		int maxBar = maxsec;
+
+		for (ConditionalBlock.ChannelLineEntry entry : channelEntries) {
+			if (entry.barIndex > maxBar) {
+				maxBar = entry.barIndex;
+			}
+			final String line = entry.line;
+			final int channel = ChartDecoder.parseInt36(line.charAt(4), line.charAt(5));
+			int basech = 0;
+			int ch2 = -1;
+			for (int ch : Section.NOTE_CHANNELS) {
+				if (ch <= channel && channel <= ch + 8) {
+					basech = ch;
+					ch2 = channel - ch;
+					break;
+				}
+			}
+			int findex = 6;
+			final int len = line.length();
+			boolean foundSep = false;
+			while (findex < len) {
+				final char ch = line.charAt(findex);
+				if (ch == ':' || Character.isWhitespace(ch)) {
+					foundSep = true;
+					findex++;
+				} else {
+					break;
+				}
+			}
+			if (!foundSep) {
+				continue;
+			}
+			int lindex = len;
+			while (lindex > findex && Character.isWhitespace(line.charAt(lindex - 1))) {
+				lindex--;
+			}
+			final int split = (lindex - findex) / 2;
+			boolean hasNonZero = false;
+			for (int i = 0; i < split; i++) {
+				final char c1 = line.charAt(findex + i * 2);
+				final char c2 = line.charAt(findex + i * 2 + 1);
+				final int data = (base == 62) ? ChartDecoder.parseInt62(c1, c2) : ChartDecoder.parseInt36(c1, c2);
+				if (data > 0) {
+					hasNonZero = true;
+					if (entry.blockIndex >= 0) {
+						if (channel == Section.LANE_AUTOPLAY
+								|| basech == Section.P1_KEY_BASE || basech == Section.P2_KEY_BASE
+								|| basech == Section.P1_INVISIBLE_KEY_BASE || basech == Section.P2_INVISIBLE_KEY_BASE
+								|| basech == Section.P1_LONG_KEY_BASE || basech == Section.P2_LONG_KEY_BASE) {
+							final boolean isMarker = (basech == Section.P1_KEY_BASE || basech == Section.P2_KEY_BASE)
+									&& (data == lnobj || data == cnobj || data == hcnobj || data == hlnobj);
+							if (!isMarker && data < wm.length && wm[data] >= 0) {
+								wavIdSet.add(wm[data]);
+							}
+						} else if (basech == Section.P1_MINE_KEY_BASE || basech == Section.P2_MINE_KEY_BASE) {
+							hasMine = true;
+							if (wm[0] >= 0) {
+								wavIdSet.add(wm[0]);
+							}
+						} else if (model.getMode() != Mode.POPN_9K && (channel == Section.P1_FREEZONE_SINGLE
+								|| channel == Section.P1_FREEZONE_PAIR
+								|| channel == Section.P2_FREEZONE_SINGLE
+								|| channel == Section.P2_FREEZONE_PAIR
+								|| (legacyFreeZoneEnabled && (channel == Section.P1_FREEZONE_LEGACY || channel == Section.P2_FREEZONE_LEGACY)))) {
+							hasFreeZone = true;
+						}
+						if (model.getMode() != Mode.POPN_9K && legacyFreeZoneEnabled
+								&& (channel == Section.P1_FREEZONE_LEGACY || channel == Section.P2_FREEZONE_LEGACY)) {
+							hasFreeZone = true;
+						}
+					}
+				}
+			}
+			if (hasNonZero) {
+				if (ch2 == 7 || ch2 == 8) {
+					final Mode nextMode = (model.getMode() == Mode.BEAT_5K) ? Mode.BEAT_7K
+							: (model.getMode() == Mode.BEAT_10K ? Mode.BEAT_14K : null);
+					if (nextMode != null) {
+						model.setMode(nextMode);
+					}
+				}
+				if (((basech == Section.P2_KEY_BASE || basech == Section.P2_INVISIBLE_KEY_BASE
+						|| basech == Section.P2_LONG_KEY_BASE || basech == Section.P2_MINE_KEY_BASE || basech == Section.P2_POTION_KEY_BASE
+						|| basech == Section.P2_DUMMY_KEY_BASE || basech == Section.P2_DUMMY_LONG_KEY_BASE
+						|| basech == Section.P2_DUMMY_MINE_KEY_BASE || basech == Section.P2_DUMMY_POTION_KEY_BASE)
+						&& (channel != Section.P2_FREEZONE_LEGACY || legacyFreeZoneEnabled))
+						|| (model.getMode() != Mode.POPN_9K && (channel == Section.P2_FREEZONE_SINGLE || channel == Section.P2_FREEZONE_PAIR))) {
+					final Mode nextMode = (model.getMode() == Mode.BEAT_5K) ? Mode.BEAT_10K
+							: (model.getMode() == Mode.BEAT_7K ? Mode.BEAT_14K : null);
+					if (nextMode != null) {
+						model.setMode(nextMode);
+					}
+				}
+			}
+		}
+
+		final int[] condWavIds = new int[wavIdSet.size()];
+		int idx = 0;
+		for (int wid : wavIdSet) {
+			condWavIds[idx++] = wid;
+		}
+		final ConditionalBlock[] blocksArray = conditionalBlocks.toArray(new ConditionalBlock[0]);
+		final ConditionalBlock.ChartBuilder builder = new ConditionalBlock.ChartBuilder(
+				channelEntries, blocksArray, bpmtable, stoptable, scrolltable, speedtable,
+				wm, bm, model.getMode(), maxBar, legacyFreeZoneEnabled);
+
+		model.setConditionalBlocks(blocksArray);
+		model.setConditionalChartBuilder(builder);
+		model.setConditionalWavIds(condWavIds);
+		model.setConditionalContainsMineNote(hasMine);
+		model.setConditionalContainsFreeZone(hasFreeZone);
+
+		builder.buildTimeLines(model, null, log);
 	}
 
 	private boolean matchesReserveWord(String line, String s) {
@@ -590,26 +1035,77 @@ enum CommandWord {
 	LNOBJ ((model, arg) -> {
 		try {
 			if (model.getBase() == 62) {
-				model.setLnobj(ChartDecoder.parseInt62(arg, 0));
+				int id = parseObjId(model, arg);
+				if (id >= 1) {
+					model.setLnobj(id);
+				} else {
+					return new DecodeLog(WARNING, "#LNOBJに無効なIDが定義されています");
+				}
 			} else {
-				model.setLnobj(Integer.parseInt(arg.toUpperCase(), 36));
+				int id = parseObjId(model, arg);
+				if (id >= 1) {
+					model.setLnobj(id);
+				} else {
+					return new DecodeLog(WARNING, "#LNOBJに無効なIDが定義されています");
+				}
 			}
 		} catch (NumberFormatException e) {
 			return new DecodeLog(WARNING, "#LNOBJに数字が定義されていません");
 		}
 		return null;
 	}),
+	CNOBJ ((model, arg) -> {
+		try {
+			int id = parseObjId(model, arg);
+			if (id >= 1) {
+				model.setCnobj(id);
+			} else {
+				return new DecodeLog(WARNING, "#CNOBJに無効なIDが定義されています");
+			}
+		} catch (NumberFormatException | IndexOutOfBoundsException e) {
+			return new DecodeLog(WARNING, "#CNOBJに数字が定義されていません");
+		}
+		return null;
+	}),
+	HCNOBJ ((model, arg) -> {
+		try {
+			int id = parseObjId(model, arg);
+			if (id >= 1) {
+				model.setHcnobj(id);
+			} else {
+				return new DecodeLog(WARNING, "#HCNOBJに無効なIDが定義されています");
+			}
+		} catch (NumberFormatException | IndexOutOfBoundsException e) {
+			return new DecodeLog(WARNING, "#HCNOBJに数字が定義されていません");
+		}
+		return null;
+	}),
+	HLNOBJ ((model, arg) -> {
+		try {
+			int id = parseObjId(model, arg);
+			if (id >= 1) {
+				model.setHlnobj(id);
+			} else {
+				return new DecodeLog(WARNING, "#HLNOBJに無効なIDが定義されています");
+			}
+		} catch (NumberFormatException | IndexOutOfBoundsException e) {
+			return new DecodeLog(WARNING, "#HLNOBJに数字が定義されていません");
+		}
+		return null;
+	}),
 	LNMODE ((model, arg) -> {
 		try {
 			int lnmode = Integer.parseInt(arg);
-			if(lnmode < 0 || lnmode > 3) {
+			if(lnmode < 0 || lnmode > 4) {
 				return new DecodeLog(WARNING, "#LNMODEに無効な数字が定義されています");
 			}
 
 			// LR2oraja Endless Dream: LR2 does not support LNMODE, suppress modes 1 or 2
 			// lnmode = 0;
 
-			model.setLnmode(lnmode);
+			if (lnmode >= 1) {
+				model.setLnmode(lnmode);
+			}
 		} catch (NumberFormatException e) {
 			return new DecodeLog(WARNING, "#LNMODEに数字が定義されていません");
 		}
@@ -646,6 +1142,30 @@ enum CommandWord {
 
 	public final BiFunction<BMSModel, String, DecodeLog> function;
 
+	private static int parseObjId(BMSModel model, String arg) {
+		final String trimmed = arg.trim();
+		if (trimmed.isEmpty()) {
+			throw new NumberFormatException();
+		}
+		int spaceIdx = 0;
+		while (spaceIdx < trimmed.length() && !Character.isWhitespace(trimmed.charAt(spaceIdx))) {
+			spaceIdx++;
+		}
+		arg = trimmed.substring(0, spaceIdx);
+		if (arg.isEmpty() || arg.length() > 2) {
+			throw new NumberFormatException();
+		}
+		if (model.getBase() == 62) {
+			if (arg.length() != 2) {
+				throw new NumberFormatException();
+			}
+			return ChartDecoder.parseInt62(arg, 0);
+		} else {
+			int id = Integer.parseInt(arg.toUpperCase(), 36);
+			return (id >= 1 && id < 36 * 36) ? id : -1;
+		}
+	}
+
 	private CommandWord(BiFunction<BMSModel, String, DecodeLog> function) {
 		this.function = function;
 	}	
@@ -664,6 +1184,30 @@ enum OptionWord {
 	});
 
 	public final BiFunction<BMSModel, String, DecodeLog> function;
+
+	private static int parseObjId(BMSModel model, String arg) {
+		final String trimmed = arg.trim();
+		if (trimmed.isEmpty()) {
+			throw new NumberFormatException();
+		}
+		int spaceIdx = 0;
+		while (spaceIdx < trimmed.length() && !Character.isWhitespace(trimmed.charAt(spaceIdx))) {
+			spaceIdx++;
+		}
+		arg = trimmed.substring(0, spaceIdx);
+		if (arg.isEmpty() || arg.length() > 2) {
+			throw new NumberFormatException();
+		}
+		if (model.getBase() == 62) {
+			if (arg.length() != 2) {
+				throw new NumberFormatException();
+			}
+			return ChartDecoder.parseInt62(arg, 0);
+		} else {
+			int id = Integer.parseInt(arg.toUpperCase(), 36);
+			return (id >= 1 && id < 36 * 36) ? id : -1;
+		}
+	}
 
 	private OptionWord(BiFunction<BMSModel, String, DecodeLog> function) {
 		this.function = function;

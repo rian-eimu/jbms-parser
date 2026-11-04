@@ -105,6 +105,9 @@ public class BMSModel implements Comparable<BMSModel> {
 	private int lnmode = LongNote.TYPE_UNDEFINED;
 
 	private int lnobj = -1;
+	private int cnobj = -1;
+	private int hcnobj = -1;
+	private int hlnobj = -1;
 
 	/**
 	 * Whether this model is decoded by osu decoder or not
@@ -114,6 +117,7 @@ public class BMSModel implements Comparable<BMSModel> {
 	public static final int LNTYPE_LONGNOTE = 0;
 	public static final int LNTYPE_CHARGENOTE = 1;
 	public static final int LNTYPE_HELLCHARGENOTE = 2;
+	public static final int LNTYPE_HELLLONGNOTE = 3;
 
 	/**
 	 * 時間とTimeLineのマッピング
@@ -292,7 +296,7 @@ public class BMSModel implements Comparable<BMSModel> {
 		for (int i = timelines.length - 1;i >= 0;i--) {
 			final TimeLine tl = timelines[i];
 			for (int lane = 0; lane < keys; lane++) {
-				if (tl.existNote(lane) || tl.getHiddenNote(lane) != null
+				if (tl.existNote(lane) || tl.existFreeZone(lane) || tl.getHiddenNote(lane) != null
 						|| tl.getBackGroundNotes().length > 0 || tl.getBGA() != -1
 						|| tl.getLayer() != -1) {
 					return tl.getMilliTime();
@@ -311,7 +315,7 @@ public class BMSModel implements Comparable<BMSModel> {
 		for (int i = timelines.length - 1;i >= 0;i--) {
 			final TimeLine tl = timelines[i];
 			for (int lane = 0; lane < keys; lane++) {
-				if (tl.existNote(lane)) {
+				if (tl.existNote(lane) || tl.existFreeZone(lane)) {
 					return tl.getMilliTime();
 				}
 			}
@@ -448,7 +452,7 @@ public class BMSModel implements Comparable<BMSModel> {
 		final int keys = mode.key;
 		for (TimeLine tl : timelines) {
 			for (int i = 0; i < keys; i++) {
-				if (tl.getNote(i) != null && tl.getNote(i) instanceof LongNote
+				if (tl.getNote(i) != null && tl.getNote(i) instanceof LongNote && !tl.getNote(i).isDummy()
 						&& ((LongNote) tl.getNote(i)).getType() == LongNote.TYPE_UNDEFINED) {
 					return true;
 				}
@@ -461,7 +465,7 @@ public class BMSModel implements Comparable<BMSModel> {
 		final int keys = mode.key;
 		for (TimeLine tl : timelines) {
 			for (int i = 0; i < keys; i++) {
-				if (tl.getNote(i) instanceof LongNote) {
+				if (tl.getNote(i) instanceof LongNote && !tl.getNote(i).isDummy()) {
 					return true;
 				}
 			}
@@ -473,7 +477,19 @@ public class BMSModel implements Comparable<BMSModel> {
 		final int keys = mode.key;
 		for (TimeLine tl : timelines) {
 			for (int i = 0; i < keys; i++) {
-				if (tl.getNote(i) instanceof MineNote) {
+				if (tl.getNote(i) instanceof MineNote && !tl.getNote(i).isDummy()) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	public boolean containsFreeZone() {
+		final int keys = mode.key;
+		for (TimeLine tl : timelines) {
+			for (int i = 0; i < keys; i++) {
+				if (tl.existFreeZone(i)) {
 					return true;
 				}
 			}
@@ -507,6 +523,30 @@ public class BMSModel implements Comparable<BMSModel> {
 
 	public void setLnobj(int lnobj) {
 		this.lnobj = lnobj;
+	}
+
+	public int getCnobj() {
+		return cnobj;
+	}
+
+	public void setCnobj(int cnobj) {
+		this.cnobj = cnobj;
+	}
+
+	public int getHcnobj() {
+		return hcnobj;
+	}
+
+	public void setHcnobj(int hcnobj) {
+		this.hcnobj = hcnobj;
+	}
+
+	public int getHlnobj() {
+		return hlnobj;
+	}
+
+	public void setHlnobj(int hlnobj) {
+		this.hlnobj = hlnobj;
 	}
 
 	public int getLnmode() {
@@ -557,13 +597,19 @@ public class BMSModel implements Comparable<BMSModel> {
 			tlsb.append("[");
 			for(int lane = 0;lane < mode.key;lane++) {
 				Note n = tl.getNote(lane);
+				FreeZoneNote fz = tl.getFreeZone(lane);
+				boolean hasFzStart = fz != null && !fz.isEnd();
+				if(hasFzStart) {
+					tlsb.append("F" + fz.getMilliDuration());
+					write = true;
+				}
 				if(n instanceof NormalNote) {
 					tlsb.append("1");
 					write = true;
 				} else if(n instanceof LongNote) {
 					LongNote ln = (LongNote)n;
 					if(!ln.isEnd()) {
-						final char[] lnchars = {'l','L','C','H'};
+						final char[] lnchars = {'l','L','C','H','h'};
 						tlsb.append(lnchars[ln.getType()] + ln.getMilliDuration());
 						write = true;
 					}
@@ -571,7 +617,9 @@ public class BMSModel implements Comparable<BMSModel> {
 					tlsb.append("m" + ((MineNote)n).getDamage());
 					write = true;					
 				} else {
-					tlsb.append("0");						
+					if (!hasFzStart) {
+						tlsb.append("0");
+					}
 				}
 				if(lane < mode.key - 1) {
 					tlsb.append(",");					
@@ -608,6 +656,101 @@ public class BMSModel implements Comparable<BMSModel> {
 
 	public enum TotalType {
 		BMS, BMSON;
+	}
+
+	/**
+	 * 動的条件分岐ブロック定義
+	 */
+	private ConditionalBlock[] conditionalBlocks = new ConditionalBlock[0];
+
+	/**
+	 * 各動的条件分岐ブロックの評価位置に対応するTimeLine
+	 */
+	private TimeLine[] conditionalEvalTimeLines = new TimeLine[0];
+
+	/**
+	 * 動的条件分岐のTimeLine再構築ビルダー
+	 */
+	private ConditionalBlock.ChartBuilder conditionalChartBuilder;
+
+	/**
+	 * 動的条件分岐の全枝で参照されるWAV ID一覧
+	 */
+	private int[] conditionalWavIds = new int[0];
+
+	/**
+	 * 動的条件分岐の枝内に地雷ノーツが含まれるかどうか
+	 */
+	private boolean conditionalContainsMineNote;
+
+	/**
+	 * 動的条件分岐の枝内にフリーゾーンが含まれるかどうか
+	 */
+	private boolean conditionalContainsFreeZone;
+
+	/**
+	 * 動的条件分岐の全枝で事前ロード対象となるノーツ一覧（スライス範囲情報を含む）
+	 */
+	private Note[] conditionalPreloadNotes = new Note[0];
+
+	public boolean hasConditional() {
+		return conditionalBlocks != null && conditionalBlocks.length > 0;
+	}
+
+	public ConditionalBlock[] getConditionalBlocks() {
+		return conditionalBlocks;
+	}
+
+	public void setConditionalBlocks(ConditionalBlock[] conditionalBlocks) {
+		this.conditionalBlocks = conditionalBlocks != null ? conditionalBlocks : new ConditionalBlock[0];
+	}
+
+	public TimeLine[] getConditionalEvalTimeLines() {
+		return conditionalEvalTimeLines;
+	}
+
+	public void setConditionalEvalTimeLines(TimeLine[] conditionalEvalTimeLines) {
+		this.conditionalEvalTimeLines = conditionalEvalTimeLines != null ? conditionalEvalTimeLines : new TimeLine[0];
+	}
+
+	public ConditionalBlock.ChartBuilder getConditionalChartBuilder() {
+		return conditionalChartBuilder;
+	}
+
+	public void setConditionalChartBuilder(ConditionalBlock.ChartBuilder conditionalChartBuilder) {
+		this.conditionalChartBuilder = conditionalChartBuilder;
+	}
+
+	public int[] getConditionalWavIds() {
+		return conditionalWavIds;
+	}
+
+	public void setConditionalWavIds(int[] conditionalWavIds) {
+		this.conditionalWavIds = conditionalWavIds != null ? conditionalWavIds : new int[0];
+	}
+
+	public boolean isConditionalContainsMineNote() {
+		return conditionalContainsMineNote;
+	}
+
+	public void setConditionalContainsMineNote(boolean conditionalContainsMineNote) {
+		this.conditionalContainsMineNote = conditionalContainsMineNote;
+	}
+
+	public boolean isConditionalContainsFreeZone() {
+		return conditionalContainsFreeZone;
+	}
+
+	public void setConditionalContainsFreeZone(boolean conditionalContainsFreeZone) {
+		this.conditionalContainsFreeZone = conditionalContainsFreeZone;
+	}
+
+	public Note[] getConditionalPreloadNotes() {
+		return conditionalPreloadNotes;
+	}
+
+	public void setConditionalPreloadNotes(Note[] conditionalPreloadNotes) {
+		this.conditionalPreloadNotes = conditionalPreloadNotes != null ? conditionalPreloadNotes : new Note[0];
 	}
 
 	public int getBase() {

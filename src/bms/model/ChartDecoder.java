@@ -67,7 +67,7 @@ public abstract class ChartDecoder {
 
 	public static ChartDecoder getDecoder(String name) {
 		final String s = name.toLowerCase();
-		if (s.endsWith(".bms") || s.endsWith(".bme") || s.endsWith(".bml") || s.endsWith(".pms")) {
+		if (s.endsWith(".bms") || s.endsWith(".bme") || s.endsWith(".bml") || s.endsWith(".pms") || s.endsWith(".bmc")) {
 			return new BMSDecoder(BMSModel.LNTYPE_LONGNOTE);
 		} else if (s.endsWith(".bmson")) {
 			return new BMSONDecoder(BMSModel.LNTYPE_LONGNOTE);

@@ -30,5 +30,14 @@ public final class PathChartSource implements ChartSource {
 	public InputStream openStream() throws IOException {
 		return Files.newInputStream(path);
 	}
+
+	@Override
+	public long lastModifiedTimeMillis() {
+		try {
+			return Files.getLastModifiedTime(path).toMillis();
+		} catch (IOException e) {
+			return -1L;
+		}
+	}
 }
 

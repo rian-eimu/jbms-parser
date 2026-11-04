@@ -43,6 +43,30 @@ public abstract class Note implements Cloneable {
 	 * 同時演奏されるノート
 	 */
 	private Note[] layerednotes = EMPTYARRAY;
+	/**
+	 * フリーゾーン区間内に内包されるノートかどうか
+	 */
+	private boolean freeZoneInner;
+	/**
+	 * ダミーノートかどうか
+	 */
+	private boolean dummy;
+
+	public boolean isFreeZoneInner() {
+		return freeZoneInner;
+	}
+
+	public void setFreeZoneInner(boolean freeZoneInner) {
+		this.freeZoneInner = freeZoneInner;
+	}
+
+	public boolean isDummy() {
+		return dummy;
+	}
+
+	public void setDummy(boolean dummy) {
+		this.dummy = dummy;
+	}
 
 	public int getWav() {
 		return wav;
