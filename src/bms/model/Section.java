@@ -120,7 +120,14 @@ public class Section {
 				final int sindex = getDataStartIndex(line);
 				if (sindex != -1) {
 					try {
-						rate = Double.valueOf(line.substring(sindex).trim());					
+						double parsedRate = Double.parseDouble(line.substring(sindex).trim());
+						double nextSection = sectionnum + parsedRate;
+						if (Double.isFinite(parsedRate) && parsedRate > 0
+								&& Double.isFinite(nextSection) && nextSection > sectionnum) {
+							rate = parsedRate;
+						} else {
+							log.add(new DecodeLog(WARNING, "小節の拡大率が不正です : " + line));
+						}
 					} catch (NumberFormatException e) {
 						log.add(new DecodeLog(WARNING, "小節の拡大率が不正です : " + line));
 					}

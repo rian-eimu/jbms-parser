@@ -178,6 +178,10 @@ public class BMSONDecoder extends ChartDecoder {
 			e.printStackTrace();
 			return null;
 		}
+		if (!validate(bmson)) {
+			printLog(f);
+			return null;
+		}
 
 		model.setTitle(bmson.info.title);
 		model.setSubTitle((bmson.info.subtitle != null ? bmson.info.subtitle : "")
@@ -1330,10 +1334,7 @@ public class BMSONDecoder extends ChartDecoder {
 			poorEvents.addAll(pb.poorEvents);
 		}
 		for (BNote n : bgaEvents) {
-			final Integer mappedId = ctx.bgaIdMap.get(n.id);
-			if (mappedId != null) {
-				getTimeLine(localTlCache, targetModel, n.y, resolution).setBGA(mappedId);
-			}
+			getTimeLine(localTlCache, targetModel, n.y, resolution).setBGA(resolveBgaId(ctx.bgaIdMap, n.id, log));
 		}
 		for (BNote n : layerEvents) {
 			final int[] idset = n.id_set != null ? n.id_set : new int[] { n.id };
@@ -1354,9 +1355,8 @@ public class BMSONDecoder extends ChartDecoder {
 				if (ctx.bgaSeqMap.containsKey(nid)) {
 					seqs[seqindex] = ctx.bgaSeqMap.get(nid);
 				} else {
-					final Integer mapped = ctx.bgaIdMap.get(n.id);
 					seqs[seqindex] = new Layer.Sequence[] {
-							new Layer.Sequence(0, mapped != null ? mapped : -1),
+							new Layer.Sequence(0, resolveBgaId(ctx.bgaIdMap, nid, log)),
 							new Layer.Sequence(500)
 					};
 				}
@@ -1369,10 +1369,9 @@ public class BMSONDecoder extends ChartDecoder {
 						new Layer(new Layer.Event(EventType.MISS, 1), new Layer.Sequence[][] { ctx.bgaSeqMap.get(n.id) })
 				});
 			} else {
-				final Integer mapped = ctx.bgaIdMap.get(n.id);
 				getTimeLine(localTlCache, targetModel, n.y, resolution).setEventlayer(new Layer[] {
 						new Layer(new Layer.Event(EventType.MISS, 1),
-								new Layer.Sequence[][] { { new Layer.Sequence(0, mapped != null ? mapped : -1), new Layer.Sequence(500) } })
+								new Layer.Sequence[][] { { new Layer.Sequence(0, resolveBgaId(ctx.bgaIdMap, n.id, log)), new Layer.Sequence(500) } })
 				});
 			}
 		}
@@ -1498,5 +1497,174 @@ public class BMSONDecoder extends ChartDecoder {
 		tl.setSpeed(speed);
 		cache.put(y, new TimeLineCache(time, tl));
 		return tl;
+	}
+
+	private boolean validate(Bmson bmson) {
+		if (bmson == null || bmson.info == null) {
+			return invalid("infoが定義されていません");
+		}
+		if (bmson.info.subartists == null) {
+			bmson.info.subartists = new String[0];
+		}
+		if (bmson.lines == null) {
+			bmson.lines = new BarLine[0];
+		}
+		if (bmson.bpm_events == null) {
+			bmson.bpm_events = new BpmEvent[0];
+		}
+		if (bmson.stop_events == null) {
+			bmson.stop_events = new StopEvent[0];
+		}
+		if (bmson.scroll_events == null) {
+			bmson.scroll_events = new ScrollEvent[0];
+		}
+		if (bmson.sound_channels == null) {
+			bmson.sound_channels = new SoundChannel[0];
+		}
+		if (bmson.key_channels == null) {
+			bmson.key_channels = new MineChannel[0];
+		}
+		if (bmson.mine_channels == null) {
+			bmson.mine_channels = new MineChannel[0];
+		}
+
+		for (BarLine line : bmson.lines) {
+			if (line == null || !validY(line.y)) {
+				return invalid("linesに不正な要素があります");
+			}
+		}
+		if (!validEvents(bmson.bpm_events, "bpm_events")
+				|| !validEvents(bmson.stop_events, "stop_events")
+				|| !validEvents(bmson.scroll_events, "scroll_events")
+				|| !validEvents(bmson.speed_events, "speed_events")
+				|| !validEvents(bmson.potion_notes, "potion_notes")
+				|| !validEvents(bmson.dummy_notes, "dummy_notes")
+				|| !validEvents(bmson.dummy_mine_notes, "dummy_mine_notes")
+				|| !validEvents(bmson.dummy_potion_notes, "dummy_potion_notes")) {
+			return false;
+		}
+		if (bmson.dummy_notes != null) {
+			for (Note note : bmson.dummy_notes) {
+				if (note.l > 0 && (long) note.y + note.l >= Integer.MAX_VALUE) {
+					return invalid("ロングノートの終端座標が範囲外です");
+				}
+			}
+		}
+		for (SoundChannel channel : bmson.sound_channels) {
+			if (channel == null) {
+				return invalid("sound_channelsにnull要素があります");
+			}
+			if (channel.notes == null) {
+				channel.notes = new Note[0];
+			}
+			if (!validEvents(channel.notes, "sound_channels.notes")) {
+				return false;
+			}
+			for (Note note : channel.notes) {
+				if (note.l > 0 && (long) note.y + note.l >= Integer.MAX_VALUE) {
+					return invalid("ロングノートの終端座標が範囲外です");
+				}
+			}
+		}
+		for (MineChannel channel : bmson.key_channels) {
+			if (!validMineChannel(channel, "key_channels")) {
+				return false;
+			}
+		}
+		for (MineChannel channel : bmson.mine_channels) {
+			if (!validMineChannel(channel, "mine_channels")) {
+				return false;
+			}
+		}
+		if (bmson.free_zone_channels != null) {
+			for (FreeZoneChannel channel : bmson.free_zone_channels) {
+				if (channel == null) {
+					return invalid("free_zone_channelsにnull要素があります");
+				}
+				if (channel.notes == null) {
+					channel.notes = new bms.model.bmson.FreeZoneNote[0];
+				}
+				if (!validEvents(channel.notes, "free_zone_channels.notes")) {
+					return false;
+				}
+				for (bms.model.bmson.FreeZoneNote note : channel.notes) {
+					if (note.l > 0 && (long) note.y + note.l >= Integer.MAX_VALUE) {
+						return invalid("フリーゾーンの終端座標が範囲外です");
+					}
+				}
+			}
+		}
+
+		if (bmson.bga != null) {
+			if (bmson.bga.bga_header != null) {
+				for (BGAHeader header : bmson.bga.bga_header) {
+					if (header == null) {
+						return invalid("bga_headerにnull要素があります");
+					}
+				}
+			}
+			if (bmson.bga.bga_sequence != null) {
+				for (BGASequence sequence : bmson.bga.bga_sequence) {
+					if (sequence == null) {
+						continue;
+					}
+					if (sequence.sequence == null) {
+						return invalid("bga_sequence.sequenceがnullです");
+					}
+					for (Sequence item : sequence.sequence) {
+						if (item == null) {
+							return invalid("bga_sequence.sequenceにnull要素があります");
+						}
+					}
+				}
+			}
+			if (!validEvents(bmson.bga.bga_events, "bga_events")
+					|| !validEvents(bmson.bga.layer_events, "layer_events")
+					|| !validEvents(bmson.bga.poor_events, "poor_events")) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private boolean validMineChannel(MineChannel channel, String name) {
+		if (channel == null) {
+			return invalid(name + "にnull要素があります");
+		}
+		if (channel.notes == null) {
+			channel.notes = new bms.model.bmson.MineNote[0];
+		}
+		return validEvents(channel.notes, name + ".notes");
+	}
+
+	private boolean validEvents(BMSONObject[] events, String name) {
+		if (events == null) {
+			return true;
+		}
+		for (BMSONObject event : events) {
+			if (event == null || !validY(event.y)) {
+				return invalid(name + "に不正な要素があります");
+			}
+		}
+		return true;
+	}
+
+	private boolean validY(int y) {
+		// イベント処理では Integer.MAX_VALUE を終端の番兵として使う。
+		return y >= 0 && y < Integer.MAX_VALUE;
+	}
+
+	private boolean invalid(String message) {
+		log.add(new DecodeLog(ERROR, message));
+		return false;
+	}
+
+	private static int resolveBgaId(Map<Integer, Integer> idmap, int id, List<DecodeLog> log) {
+		Integer index = idmap.get(id);
+		if (index == null) {
+			log.add(new DecodeLog(WARNING, "未定義のBGA IDを参照しています : " + id));
+			return -1;
+		}
+		return index;
 	}
 }
